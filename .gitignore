@@ -2,4 +2,5 @@ target/
 assets/engine/
 assets/models/
 automation/
+data/
 .directory

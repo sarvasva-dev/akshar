@@ -12,6 +12,7 @@ use std::time::{Duration, UNIX_EPOCH};
 
 use crate::config::project_root;
 use crate::engine::{OCREngine, SmartOptions};
+use crate::index::SearchIndex;
 
 pub const SUPPORTED_EXTENSIONS: [&str; 8] = [
     "png", "jpg", "jpeg", "webp", "bmp", "tiff", "tif", "pdf",
@@ -114,6 +115,7 @@ struct WatcherState {
 #[derive(Clone)]
 pub struct FolderWatcher {
     engine: OCREngine,
+    index: Option<SearchIndex>,
     state: Arc<Mutex<WatcherState>>,
     stop_flag: Arc<AtomicBool>,
     handle: Arc<Mutex<Option<JoinHandle<()>>>>,
@@ -121,8 +123,13 @@ pub struct FolderWatcher {
 
 impl FolderWatcher {
     pub fn new(engine: OCREngine) -> Self {
+        Self::with_index(engine, None)
+    }
+
+    pub fn with_index(engine: OCREngine, index: Option<SearchIndex>) -> Self {
         Self {
             engine,
+            index,
             state: Arc::new(Mutex::new(WatcherState {
                 config: WatcherConfig::default(),
                 running: false,
@@ -278,6 +285,7 @@ impl FolderWatcher {
             keywords: Vec::new(),
             form: cfg.form_schema.clone(),
             form_preset: cfg.form_preset.clone(),
+            enhance: false,
             dpi: 180,
             max_pages: 25,
         };
@@ -344,6 +352,15 @@ impl FolderWatcher {
                 };
 
                 append_csv_summary(outbox, &job, text_str);
+                if let Some(idx) = &self.index {
+                    let _ = idx.insert(
+                        &filename,
+                        &path.to_string_lossy(),
+                        &job.route,
+                        job.line_count,
+                        text_str,
+                    );
+                }
 
                 if let Some(url) = cfg.webhook_url.as_deref().filter(|u| !u.trim().is_empty()) {
                     let payload = json!({

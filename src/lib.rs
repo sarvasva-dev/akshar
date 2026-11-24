@@ -1,10 +1,21 @@
 pub mod api;
 pub mod automation;
+pub mod classify;
 pub mod config;
 pub mod engine;
+pub mod extract;
+pub mod index;
 pub mod pdf;
+pub mod preprocess;
+pub mod redact;
+pub mod table;
 pub mod tiling;
 
 pub use automation::{FolderWatcher, WatcherConfig};
+pub use classify::{PageClassification, classify_page};
 pub use config::{AppConfig, load_config};
 pub use engine::{OCREngine, SmartOptions, preset_forms};
+pub use extract::{ExtractedEntities, extract_grounded_form, extract_intelligence, normalize_ocr_line};
+pub use index::{IndexedDoc, SearchIndex};
+pub use redact::{RedactStyle, RedactionSummary, redact_image, redact_text};
+pub use table::{ExtractedTable, WordBox, extract_tables_from_lines, extract_tables_from_words};

@@ -5,7 +5,7 @@
 <h1 align="center">Akshar</h1>
 
 <p align="center">
-  Fast, local OCR, multi-page PDF text extraction, and folder watcher built in Rust.
+  Local document intelligence in Rust: OCR, multi-page PDFs, PII redaction, table/entity extraction, full-text search, and folder automation.
 </p>
 
 <p align="center">
@@ -24,16 +24,19 @@
 
 ---
 
-**Akshar** extracts text from images and multi-page PDFs completely locally on CPU — no GPU, no cloud API keys, and no data leaving your machine. It compiles to a single **~8.4 MB** Rust binary backed by a **~21 MB** quantized vision model.
+**Akshar** is a complete offline document processing suite compiled to a single Rust binary backed by a ~21 MB quantized vision model — no GPU, no cloud API keys, and zero data leaving your device.
 
-## Highlights
+## What Akshar Adds Beyond Raw OCR
 
-- **100% local on CPU** — runs offline in a single Rust binary (`axum` + `tokio` + direct C ABI binding).
-- **Full-page tiled OCR** — slices tall/dense documents into overlapping strips and deduplicates boundary boxes to bypass single-pass line caps (`40/40` lines at `99.91%` character accuracy in testing).
-- **Multi-page PDFs** — rasterizes and extracts text page-by-page using `pdftoppm`.
-- **Smart auto routing** — switches automatically between standard OCR, full-page tiled OCR for tall documents, and photo scene/object description when an image contains no text.
-- **Structured field extraction** — extract typed JSON fields using built-in presets (`invoice`, `receipt`, `id_card`, `business_card`) or custom JSON schemas.
-- **Folder watcher & webhooks** — monitor an inbox directory continuously, export `.json`, `.txt`, `.md`, and `summary.csv` into an outbox, archive processed files, and optionally trigger HTTP webhooks.
+- **Native PDF fast path (~10 ms/page)** — extracts digital PDF text + exact word bounding boxes via `pdftotext -bbox-layout` without rasterizing; only scanned/image-only pages run through the vision model (10× faster on hybrid PDFs with byte-identical text).
+- **2D geometric table recovery** — clusters word/line coordinates into column matrices (`headers`, `rows`, `cells` with bounding boxes, and Markdown tables).
+- **Confidence-gated grounded extraction (`--preset` / `/v1/extract`)** — extracts fields directly from verified text with provenance and gates model fallbacks (`>= 0.55` + echo rejection), returning honest `null` when a field is absent instead of hallucinating field names.
+- **Deterministic page classification** — classifies each page (`invoice`, `receipt`, `table`, `id_card`, `letter`, `form`, `photo`, `document`, `other`) with confidence and explainable signals.
+- **Adaptive full-page tiled OCR** — single fast pass by default (~3× faster on normal A4 pages), automatically escalating to overlapping multi-tile OCR when dense text approaches single-pass caps (`40/40` lines at `99.91%` character accuracy).
+- **Auto-PII redaction (`--redact` / `/v1/redact`)** — detects emails, phone numbers, Aadhaar/PAN IDs, card numbers, and custom keywords, paints solid-black or pixelated boxes onto the image, and returns a safe PNG + masked text.
+- **Built-in SQLite FTS5 search (`--search` / `Ctrl+K`)** — automatically indexes every scanned image, PDF, and watched document locally (`data/akshar.db`) for instant full-text search with snippets.
+- **Scan pre-enhancement (`--enhance`)** — percentile contrast stretching + unsharp mask sharpening for blurry or low-contrast phone photos.
+- **Live folder watcher & webhooks** — monitors an inbox folder continuously, exports `.json`, `.txt`, `.md`, and `summary.csv`, archives processed files, and optionally triggers HTTP webhooks.
 
 ## Quickstart
 
@@ -55,24 +58,33 @@ cargo build --release
 ./target/release/akshar --serve
 ```
 
-Open **http://127.0.0.1:8000** to drop images or PDFs, paste from clipboard (`Ctrl+V`), or configure folder automation from the **Settings & Watch** drawer.
+Open **http://127.0.0.1:8000** — drop images or PDFs, press `Ctrl+V` to paste, press `Ctrl+K` to search all past scans, click **Redact PII** to black out sensitive info, or open **Settings & Watch** for folder automation.
 
 > PDF rasterization uses `pdftoppm` (`poppler-utils` on Debian/Ubuntu, `poppler` on Arch/macOS).
 
 ## CLI Usage
 
 ```sh
-# Single image or multi-page PDF
+# Single image or multi-page PDF (auto-indexed for local search)
 ./target/release/akshar invoice.png
 ./target/release/akshar report.pdf --json
 
-# Force full-page tiled OCR on a tall document
+# Enhance a blurry/dark receipt photo before OCR
+./target/release/akshar receipt.jpg --enhance
+
+# Auto-redact PII (emails, phones, IDs, cards) + custom words
+./target/release/akshar statement.png --redact --redact-terms "Acme Corp" --out safe.png
+
+# Search across all previously scanned documents (SQLite FTS5)
+./target/release/akshar --search "invoice 48291"
+
+# Force full-page tiled OCR on a long document
 ./target/release/akshar statement.png --tiled
 
-# Structured form extraction using a built-in preset
+# Structured JSON extraction using a built-in preset
 ./target/release/akshar receipt.jpg --preset receipt
 
-# Batch-process an entire folder once
+# Batch-process a folder once
 ./target/release/akshar ./docs/ --out ./outbox --formats json,txt,md
 
 # Continuously watch an inbox directory (with optional webhook)
@@ -84,24 +96,21 @@ Open **http://127.0.0.1:8000** to drop images or PDFs, paste from clipboard (`Ct
 | Method | Endpoint | Description |
 | --- | --- | --- |
 | `GET` | `/` | Web UI |
-| `GET` | `/v1/health` | Service readiness & loaded model |
+| `GET` | `/v1/health` | Service status, loaded model, indexed document count |
 | `GET` | `/v1/config` | App settings (`config.json`) |
 | `GET` | `/v1/presets` | Built-in structured form schemas |
-| `POST` | `/v1/auto` | Automatic OCR / tiled OCR / PDF / photo description |
-| `POST` | `/v1/ocr` | Single-pass or tiled OCR (`tiled=true`) |
+| `POST` | `/v1/auto` | Automatic OCR / tiled OCR / PDF / photo description + entities |
+| `POST` | `/v1/ocr` | Single-pass or tiled OCR (`tiled=true`, `enhance=true`) |
+| `POST` | `/v1/redact` | PII auto-redaction returning redacted PNG (base64) + report |
 | `POST` | `/v1/extract` | Constrained JSON-schema field extraction |
 | `POST` | `/v1/describe` | Full scene description, objects, and OCR |
 | `POST` | `/v1/batch` | Multi-file image + PDF batch processing |
+| `GET` | `/v1/search?q=...` | Full-text SQLite FTS5 search over indexed documents |
+| `DELETE` | `/v1/search/{id}` | Remove a document from the search index |
 | `GET` | `/v1/automation/status` | Folder watcher state and job log |
 | `POST` | `/v1/automation/start` | Start or update folder watcher |
 | `POST` | `/v1/automation/stop` | Stop folder watcher |
 | `POST` | `/v1/automation/scan-now` | Run an immediate inbox scan |
-
-Example request:
-
-```sh
-curl -F "file=@invoice.png" -F "mode=auto" http://127.0.0.1:8000/v1/auto
-```
 
 ## Docker
 
@@ -115,30 +124,24 @@ docker run -p 8000:8000 akshar
 ```
 Image / PDF
    │
+   ├── (optional) Pre-Enhancer ──► Auto-Contrast + Unsharp Mask
    ├── PDF ──► pdftoppm (page rasterizer) ──┐
    │                                        ▼
-   └── Image ──► Smart Router ──► Standard OCR / Tiled OCR (overlap + IoU/containment dedup)
+   └── Image ──► Smart Router ──► Standard / Tiled OCR (overlap + IoU/containment dedup)
                                       │
-                                      ├── text found ──► Reading-order text + boxes + JSON/TXT/MD/CSV
-                                      └── 0 text lines ─► Scene & object description fallback
+                                      ├── Entity & Table Engine ──► emails, amounts, dates, Markdown tables
+                                      ├── PII Redactor ──────────► black/pixelated safe PNG + masked text
+                                      ├── SQLite FTS5 Index ─────► instant Ctrl+K / --search archive
+                                      └── 0 text lines ──────────► Scene & object description fallback
 ```
-
-## Configuration
-
-Settings live in `config.json`, with optional environment overrides:
-
-- `AKSHAR_CONFIG` — path to `config.json`
-- `AKSHAR_LIB_PATH` — path to native shared library
-- `AKSHAR_MODEL_PATH` — path to `.cact` model weights
-- `AKSHAR_THREADS` — inference thread count (`0` = auto)
 
 ## Tests
 
 ```sh
-# Fast unit tests (no model download required)
+# Fast unit tests (tiling, entity extraction, PII redaction, contrast enhancement, FTS5 search)
 cargo test --lib
 
-# Full end-to-end suite (OCR, 40-line tiling, 2-page PDF, folder watcher + webhook, HTTP routes)
+# Full end-to-end suite (OCR, 40-line tiling, 2-page PDF, PII redaction, folder watcher + webhook, HTTP routes)
 cargo test --release -- --test-threads=1
 ```
 

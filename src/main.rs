@@ -7,9 +7,11 @@ use akshar::api::build_router;
 use akshar::automation::{FolderWatcher, WatcherConfig};
 use akshar::config::load_config;
 use akshar::engine::{OCREngine, SmartOptions};
+use akshar::index::SearchIndex;
+use akshar::redact::RedactStyle;
 
 #[derive(Parser, Debug)]
-#[command(name = "akshar", version, about = "Local OCR, PDF text extraction, and folder watcher")]
+#[command(name = "akshar", version, about = "Local OCR, PDF extraction, PII redaction, and full-text search")]
 struct Cli {
     /// Image, PDF file, or directory for batch processing
     target: Option<PathBuf>,
@@ -21,6 +23,26 @@ struct Cli {
     /// Shortcut for --mode tiled
     #[arg(long)]
     tiled: bool,
+
+    /// Auto-enhance low-contrast or blurry scans before OCR
+    #[arg(long)]
+    enhance: bool,
+
+    /// Redact detected PII (emails, phones, IDs, cards, custom terms) and write a redacted PNG
+    #[arg(long)]
+    redact: bool,
+
+    /// Extra comma-separated words to redact (with --redact)
+    #[arg(long)]
+    redact_terms: Option<String>,
+
+    /// Redaction style: black or pixelate (with --redact)
+    #[arg(long, default_value = "black")]
+    redact_style: String,
+
+    /// Search across all previously scanned documents in the local SQLite FTS5 index
+    #[arg(long)]
+    search: Option<String>,
 
     /// Detection confidence threshold (0..1)
     #[arg(long, default_value_t = 0.3)]
@@ -42,7 +64,7 @@ struct Cli {
     #[arg(long = "json")]
     as_json: bool,
 
-    /// Output directory for batch or watch mode
+    /// Output file (for --redact) or directory (for batch / watch mode)
     #[arg(long)]
     out: Option<PathBuf>,
 
@@ -79,6 +101,21 @@ struct Cli {
 async fn main() -> Result<()> {
     let cli = Cli::parse();
     let app_cfg = load_config(None);
+
+    if let Some(query) = cli.search {
+        let idx = SearchIndex::open_default()?;
+        let hits = idx.search(&query, 25)?;
+        if cli.as_json {
+            println!("{}", serde_json::to_string_pretty(&hits)?);
+        } else if hits.is_empty() {
+            println!("No matching documents found ({} indexed).", idx.count());
+        } else {
+            for h in hits {
+                println!("[#{}] {} ({}) — {}", h.id, h.filename, h.created_at, h.snippet.replace('\n', " "));
+            }
+        }
+        return Ok(());
+    }
 
     if cli.serve {
         let engine = OCREngine::new(None, None, None)?;
@@ -120,7 +157,8 @@ async fn main() -> Result<()> {
         let parent = inbox.parent().map(PathBuf::from).unwrap_or_else(|| PathBuf::from("."));
         let outbox = cli.out.unwrap_or_else(|| parent.join("outbox"));
         let engine = OCREngine::new(None, None, None)?;
-        let watcher = FolderWatcher::new(engine);
+        let index = SearchIndex::open_default().ok();
+        let watcher = FolderWatcher::with_index(engine, index);
         let cfg = WatcherConfig {
             inbox_dir: inbox.to_string_lossy().into_owned(),
             outbox_dir: outbox.to_string_lossy().into_owned(),
@@ -159,9 +197,46 @@ async fn main() -> Result<()> {
 
     let engine = OCREngine::new(None, None, None)?;
 
+    if cli.redact {
+        let raw = std::fs::read(&target)
+            .with_context(|| format!("failed to read {}", target.display()))?;
+        let terms: Vec<String> = cli
+            .redact_terms
+            .as_deref()
+            .unwrap_or("")
+            .split(',')
+            .map(str::trim)
+            .filter(|s| !s.is_empty())
+            .map(String::from)
+            .collect();
+        let style = if cli.redact_style.eq_ignore_ascii_case("pixelate") {
+            RedactStyle::Pixelate
+        } else {
+            RedactStyle::SolidBlack
+        };
+        let (png_bytes, summary, elapsed_ms) =
+            engine.redact_image_bytes(&raw, &terms, style, cli.enhance, &cli.lang)?;
+        let out_path = cli.out.unwrap_or_else(|| {
+            let stem = target.file_stem().and_then(|s| s.to_str()).unwrap_or("output");
+            target.with_file_name(format!("{stem}_redacted.png"))
+        });
+        std::fs::write(&out_path, &png_bytes)?;
+        println!(
+            "{}",
+            serde_json::to_string_pretty(&json!({
+                "output": out_path.to_string_lossy(),
+                "redacted_count": summary.redacted_count,
+                "matches": summary.matches,
+                "elapsed_ms": elapsed_ms
+            }))?
+        );
+        return Ok(());
+    }
+
     if target.is_dir() {
         let outbox = cli.out.unwrap_or_else(|| target.join("ocr_output"));
-        let watcher = FolderWatcher::new(engine);
+        let index = SearchIndex::open_default().ok();
+        let watcher = FolderWatcher::with_index(engine, index);
         let cfg = WatcherConfig {
             inbox_dir: target.to_string_lossy().into_owned(),
             outbox_dir: outbox.to_string_lossy().into_owned(),
@@ -195,10 +270,20 @@ async fn main() -> Result<()> {
         keywords: Vec::new(),
         form: form_schema,
         form_preset: cli.preset,
+        enhance: cli.enhance,
         dpi: 180,
         max_pages: 25,
     };
     let result = engine.smart_process_file(&target, &opts)?;
+    if let Ok(idx) = SearchIndex::open_default() {
+        let text = result["text"].as_str().unwrap_or("");
+        if !text.trim().is_empty() {
+            let fname = target.file_name().and_then(|n| n.to_str()).unwrap_or("file");
+            let route = result["meta"]["auto_route"].as_str().unwrap_or(&mode);
+            let lines = result["meta"]["line_count"].as_u64().unwrap_or(0) as usize;
+            let _ = idx.insert(fname, &target.to_string_lossy(), route, lines, text);
+        }
+    }
     if cli.as_json || mode == "form" || mode == "vision" {
         println!("{}", serde_json::to_string_pretty(&result)?);
     } else {

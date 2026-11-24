@@ -2,11 +2,13 @@ use axum::body::Body;
 use axum::http::{Request, StatusCode};
 use http_body_util::BodyExt;
 use image::{ImageFormat, Rgb, RgbImage};
-use akshar::api::build_router;
+use akshar::api::build_router_with_index;
 use akshar::automation::{FolderWatcher, WatcherConfig};
 use akshar::config::load_config;
 use akshar::engine::{OCREngine, SmartOptions};
+use akshar::index::SearchIndex;
 use akshar::pdf::render_pdf_bytes;
+use akshar::redact::RedactStyle;
 use akshar::tiling::compute_tiles;
 use serde_json::{Value, json};
 use std::io::{Cursor, Read, Write};
@@ -186,6 +188,73 @@ fn test_ocr_tiled_pdf_and_auto_fallback() {
         .expect("tiled ocr");
     let count = r_tiled["meta"]["line_count"].as_u64().unwrap();
     assert!(count > 32, "expected >32 lines from tiled OCR, got {count}");
+
+    // 5. Auto-PII redaction on invoice with email + custom term
+    let pii_png = png_from_lines(
+        &[
+            "CUSTOMER REPORT",
+            "EMAIL: alice@example.com",
+            "SECRET PROJECT FALCON",
+        ],
+        460,
+        240,
+        18,
+        40,
+    );
+    let (redacted_png, summary, _ms) = engine
+        .redact_image_bytes(&pii_png, &["Falcon".into()], RedactStyle::SolidBlack, false, "en")
+        .expect("redact pii");
+    assert!(!redacted_png.is_empty());
+    assert!(summary.redacted_count >= 1, "expected PII redactions, got {:?}", summary);
+    assert!(
+        summary.redacted_text.contains("[REDACTED:"),
+        "expected redacted token, got: {}",
+        summary.redacted_text
+    );
+
+    // 6. Benchmark regression test: p2 scanned invoice with --preset invoice
+    //    Must return document_type="invoice", total_amount="12345 rupees", and honest null for missing fields (NEVER "total_name"!)
+    let p2_png = png_from_lines(
+        &["Total amount due: 12345 rupees."],
+        460,
+        240,
+        18,
+        40,
+    );
+    let mut form_opts = SmartOptions::default();
+    form_opts.mode = "form".into();
+    form_opts.form_preset = Some("invoice".into());
+    let r_form = engine
+        .smart_process_bytes(&p2_png, Some("p2.png"), &form_opts)
+        .expect("grounded invoice preset");
+    let form_fields = &r_form["fields"]["form"];
+    assert_eq!(form_fields["document_type"]["value"], "invoice", "got: {form_fields}");
+    let tot = form_fields["total_amount"]["value"].as_str().unwrap_or("");
+    assert!(tot.contains("12345"), "expected 12345 in total_amount, got: {form_fields}");
+    assert!(form_fields["invoice_number"]["value"].is_null(), "missing field must be null, got: {form_fields}");
+    assert!(form_fields["date"]["value"].is_null(), "missing date must be null, got: {form_fields}");
+    assert!(form_fields["vendor_name"]["value"].is_null(), "missing vendor must be null, got: {form_fields}");
+
+    // 7. Native PDF fast path + 2D table recovery (digital PDF must take <500ms, never OCR'd!)
+    let native_pdf = make_vector_pdf(
+        &[
+            (&["Smoke Test - Fast Native Path in Milliseconds"], 500, 300),
+            (&["Item       Qty       Price", "Pen        10        50", "Book       4         200"], 500, 300),
+        ],
+        14,
+        32,
+    );
+    let r_native = engine
+        .smart_process_bytes(&native_pdf, Some("native.pdf"), &SmartOptions::default())
+        .expect("native pdf fast path");
+    assert_eq!(r_native["meta"]["auto_route"], "pdf_native_fast");
+    assert_eq!(r_native["meta"]["native_pages"], 2);
+    assert_eq!(r_native["meta"]["ocr_pages"], 0);
+    assert!(r_native["meta"]["elapsed_ms"].as_f64().unwrap() < 1000.0);
+    assert!(r_native["text"].as_str().unwrap().contains("Fast Native Path"));
+    let tbls = r_native["tables"].as_array().unwrap();
+    assert!(!tbls.is_empty(), "expected 2D table on page 2, got: {r_native}");
+    assert_eq!(tbls[0]["headers"], json!(["Item", "Qty", "Price"]));
 }
 
 #[test]
@@ -283,9 +352,12 @@ fn test_folder_watcher_and_webhook() {
 #[tokio::test]
 async fn test_axum_http_endpoints() {
     let engine = OCREngine::new(None, None, None).unwrap();
-    let app = build_router(engine);
+    let idx_dir = TempDir::new().unwrap();
+    let idx = SearchIndex::open(&idx_dir.path().join("test_idx.db")).unwrap();
+    idx.insert("sample_bill.png", "", "standard_ocr", 3, "ACME INVOICE 9981 TOTAL 500 USD").unwrap();
+    let app = build_router_with_index(engine, Some(idx));
 
-    // 1. Minimalist light UI
+    // 1. Light UI
     let resp = app
         .clone()
         .oneshot(Request::builder().uri("/").body(Body::empty()).unwrap())
@@ -297,11 +369,12 @@ async fn test_axum_http_endpoints() {
     assert!(html.contains("Akshar"));
     assert!(html.contains("Extract text from any image or PDF"));
 
-    // 2. Health, Config, Presets, Automation status
+    // 2. Health, Config, Presets, Search, Automation status
     for (uri, key) in [
         ("/v1/health", "status"),
         ("/v1/config", "name"),
         ("/v1/presets", "invoice"),
+        ("/v1/search?q=9981", "results"),
         ("/v1/automation/status", "running"),
     ] {
         let r = app
@@ -312,6 +385,9 @@ async fn test_axum_http_endpoints() {
         assert_eq!(r.status(), StatusCode::OK, "failed {uri}");
         let v: Value = serde_json::from_slice(&r.into_body().collect().await.unwrap().to_bytes()).unwrap();
         assert!(v.get(key).is_some(), "missing {key} in {uri}: {v}");
+        if uri.starts_with("/v1/search") {
+            assert_eq!(v["count"], 1);
+        }
     }
 
     // 3. Automation start -> stop JSON endpoint

@@ -10,8 +10,17 @@ use std::ptr;
 use std::sync::{Mutex, OnceLock};
 use std::time::Instant;
 
+use crate::classify::classify_page;
 use crate::config::{resolve_engine_path, resolve_model_path};
-use crate::pdf::{is_pdf_bytes, is_pdf_path, render_pdf_bytes, render_pdf_file};
+use crate::extract::{
+    extract_grounded_form, extract_intelligence, normalize_ocr_line, sanitize_model_form_field,
+};
+use crate::pdf::{
+    extract_native_pdf_pages, is_pdf_bytes, is_pdf_path, render_single_pdf_page,
+};
+use crate::preprocess::enhance_for_ocr;
+use crate::redact::{RedactStyle, RedactionSummary, redact_image};
+use crate::table::{extract_tables_from_lines, extract_tables_from_words};
 use crate::tiling::{OCRLine, deduplicate_lines, run_tiled_ocr};
 
 const VISION_BIT: c_int = 4;
@@ -104,6 +113,7 @@ pub struct SmartOptions {
     pub keywords: Vec<String>,
     pub form: Option<Value>,
     pub form_preset: Option<String>,
+    pub enhance: bool,
     pub dpi: u32,
     pub max_pages: usize,
 }
@@ -118,6 +128,7 @@ impl Default for SmartOptions {
             keywords: Vec::new(),
             form: None,
             form_preset: None,
+            enhance: false,
             dpi: 180,
             max_pages: 25,
         }
@@ -298,19 +309,20 @@ impl OCREngine {
 
         if let Some(arr) = raw.get("text").and_then(|v| v.as_array()) {
             for item in arr {
-                let s = item
+                let raw_s = item
                     .get("string")
                     .and_then(|v| v.as_str())
                     .unwrap_or("")
                     .trim();
-                if s.is_empty() {
+                if raw_s.is_empty() {
                     continue;
                 }
+                let s = normalize_ocr_line(raw_s);
                 let bn = parse_bbox(item.get("bbox"));
                 let px = norm_to_px(bn, width, height);
                 let conf = item.get("score").and_then(|v| v.as_f64()).unwrap_or(0.0);
                 lines.push(OCRLine {
-                    text: s.to_string(),
+                    text: s,
                     confidence: (conf * 10000.0).round() / 10000.0,
                     bbox: px,
                     bbox_norm: bn,
@@ -351,15 +363,22 @@ impl OCREngine {
             .map(|l| l.text.as_str())
             .collect::<Vec<_>>()
             .join("\n");
+        let entities = extract_intelligence(&text, &lines);
+        let tables = extract_tables_from_lines(&lines);
+        let classification = classify_page(&text, &lines, &tables, false);
         let (width, height) = rgb.dimensions();
 
         Ok(json!({
             "text": text,
             "lines": lines,
+            "tables": tables,
+            "classification": classification,
+            "entities": entities,
             "meta": {
                 "width": width,
                 "height": height,
                 "line_count": lines.len(),
+                "table_count": tables.len(),
                 "tiled": tiled,
                 "tiles_processed": tiles_count,
                 "elapsed_ms": elapsed_ms
@@ -374,17 +393,77 @@ impl OCREngine {
         language: &str,
         keywords: &[String],
     ) -> Result<Value> {
-        if !form.is_object() || form.as_object().map(|m| m.is_empty()).unwrap_or(true) {
+        let Some(schema_obj) = form.as_object().filter(|m| !m.is_empty()) else {
             bail!("form must be a non-empty JSON schema field mapping");
-        }
+        };
         let t0 = Instant::now();
-        let raw = self.raw_describe(rgb, &json!({ "form": form }), language, keywords)?;
+
+        // Stage 1: OCR-grounded deterministic extraction (accurate values + honest null on missing fields)
+        let lines = self.ocr_single_rgb(rgb, 0.3, 32, language, keywords)?;
+        let text = lines
+            .iter()
+            .map(|l| l.text.as_str())
+            .collect::<Vec<_>>()
+            .join("\n");
+        let tables = extract_tables_from_lines(&lines);
+        let classification = classify_page(&text, &lines, &tables, false);
+        let mut grounded = extract_grounded_form(form, &text, &lines, &classification);
+
+        // Stage 2: Only consult native model form decoder for non-text/visual scenes or unresolved
+        // non-standard fields, strictly confidence-gated (>= 0.55) and echo-filtered.
+        let needs_visual_fallback = lines.is_empty()
+            || schema_obj.keys().any(|k| {
+                let kl = k.to_ascii_lowercase();
+                let is_text_field = kl.contains("total")
+                    || kl.contains("amount")
+                    || kl.contains("invoice")
+                    || kl.contains("date")
+                    || kl.contains("dob")
+                    || kl.contains("email")
+                    || kl.contains("phone")
+                    || kl.contains("vendor")
+                    || kl.contains("merchant")
+                    || kl.contains("company")
+                    || kl.contains("document_type")
+                    || kl.contains("card_type")
+                    || kl.contains("id_number")
+                    || kl.contains("payment");
+                !is_text_field && grounded.get(k).and_then(|v| v.get("value")).is_none_or(Value::is_null)
+            });
+
+        if needs_visual_fallback {
+            if let Ok(raw) = self.raw_describe(rgb, &json!({ "form": form }), language, keywords) {
+                let raw_form = raw.get("form").unwrap_or(&raw);
+                let all_keys: std::collections::HashSet<String> =
+                    schema_obj.keys().map(|k| k.to_ascii_lowercase()).collect();
+                for k in schema_obj.keys() {
+                    let already_found = grounded
+                        .get(k)
+                        .and_then(|v| v.get("value"))
+                        .is_some_and(|v| !v.is_null());
+                    if already_found {
+                        continue;
+                    }
+                    if let Some(raw_field) = raw_form.get(k) {
+                        grounded.insert(
+                            k.clone(),
+                            sanitize_model_form_field(k, &all_keys, raw_field, 0.55),
+                        );
+                    }
+                }
+            }
+        }
+
         let (width, height) = rgb.dimensions();
         Ok(json!({
-            "fields": raw,
+            "fields": { "form": grounded },
+            "classification": classification,
+            "text": text,
+            "lines": lines,
             "meta": {
                 "width": width,
                 "height": height,
+                "line_count": lines.len(),
                 "elapsed_ms": round2(t0.elapsed().as_secs_f64() * 1000.0)
             }
         }))
@@ -450,12 +529,16 @@ impl OCREngine {
             .map(|l| l.text.as_str())
             .collect::<Vec<_>>()
             .join("\n");
+        let tables = extract_tables_from_lines(&text_lines);
+        let classification = classify_page(&text, &text_lines, &tables, !objects.is_empty());
 
         Ok(json!({
             "scene": raw.get("scene").cloned().unwrap_or_else(|| Value::Object(Map::new())),
             "objects": objects,
             "text": text,
             "lines": text_lines,
+            "tables": tables,
+            "classification": classification,
             "relations": raw.get("relations").cloned().unwrap_or_else(|| Value::Array(vec![])),
             "meta": {
                 "width": width,
@@ -469,6 +552,13 @@ impl OCREngine {
 
     pub fn smart_process_rgb(&self, rgb: &RgbImage, opts: &SmartOptions) -> Result<Value> {
         let t0 = Instant::now();
+        let enhanced_holder;
+        let img = if opts.enhance {
+            enhanced_holder = enhance_for_ocr(rgb);
+            &enhanced_holder
+        } else {
+            rgb
+        };
         let resolved_form = opts.form.clone().or_else(|| {
             opts.form_preset
                 .as_deref()
@@ -479,46 +569,48 @@ impl OCREngine {
             "form" => {
                 let schema = resolved_form
                     .ok_or_else(|| anyhow::anyhow!("form mode requires a form schema or valid form_preset"))?;
-                let mut res = self.extract_rgb(rgb, &schema, &opts.language, &opts.keywords)?;
+                let mut res = self.extract_rgb(img, &schema, &opts.language, &opts.keywords)?;
                 res["meta"]["auto_route"] = json!("structured_form");
                 Ok(res)
             }
             "vision" => {
-                let mut res = self.describe_rgb(rgb, opts.conf, opts.text_conf, &opts.language, &opts.keywords)?;
+                let mut res = self.describe_rgb(img, opts.conf, opts.text_conf, &opts.language, &opts.keywords)?;
                 res["meta"]["auto_route"] = json!("scene_vision");
                 Ok(res)
             }
             "tiled" => {
-                let mut res = self.ocr_rgb(rgb, opts.text_conf, 32, &opts.language, &opts.keywords, true, None)?;
+                let mut res = self.ocr_rgb(img, opts.text_conf, 32, &opts.language, &opts.keywords, true, None)?;
                 res["meta"]["auto_route"] = json!("tiled_ocr");
                 Ok(res)
             }
             "ocr" => {
-                let mut res = self.ocr_rgb(rgb, opts.text_conf, 32, &opts.language, &opts.keywords, false, None)?;
+                let mut res = self.ocr_rgb(img, opts.text_conf, 32, &opts.language, &opts.keywords, false, None)?;
                 res["meta"]["auto_route"] = json!("standard_ocr");
                 Ok(res)
             }
             _ => {
-                // Smart `auto` routing
-                let (w, h) = rgb.dimensions();
-                let is_tall_doc = h > 1100 && (h as f64) / (w.max(1) as f64) >= 1.35;
-                if is_tall_doc {
-                    let mut res = self.ocr_rgb(rgb, opts.text_conf, 32, &opts.language, &opts.keywords, true, None)?;
-                    if res["meta"]["line_count"].as_u64().unwrap_or(0) > 0 {
-                        res["meta"]["auto_route"] = json!("tiled_ocr");
-                        return Ok(res);
-                    }
-                    let mut vis = self.describe_rgb(rgb, opts.conf, opts.text_conf, &opts.language, &opts.keywords)?;
-                    vis["meta"]["auto_route"] = json!("scene_vision_fallback");
-                    vis["meta"]["elapsed_ms"] = json!(round2(t0.elapsed().as_secs_f64() * 1000.0));
-                    return Ok(vis);
+                // Adaptive `auto` routing:
+                // 1) Fast single pass first (~4.5s vs 14s for 3 tiles).
+                // 2) Only escalate to full-page tiled OCR when a tall page actually hits dense text
+                //    (>= 22 lines, approaching the model's 32-line ceiling).
+                // 3) If 0 text lines found, fall back to Scene & Objects description.
+                let mut res = self.ocr_rgb(img, opts.text_conf, 32, &opts.language, &opts.keywords, false, None)?;
+                let line_count = res["meta"]["line_count"].as_u64().unwrap_or(0);
+                let (w, h) = img.dimensions();
+                let is_tall_dense = h > 1100 && (h as f64) / (w.max(1) as f64) >= 1.35 && line_count >= 22;
+
+                if is_tall_dense {
+                    let mut tiled_res = self.ocr_rgb(img, opts.text_conf, 32, &opts.language, &opts.keywords, true, None)?;
+                    tiled_res["meta"]["auto_route"] = json!("tiled_ocr");
+                    tiled_res["meta"]["elapsed_ms"] = json!(round2(t0.elapsed().as_secs_f64() * 1000.0));
+                    return Ok(tiled_res);
                 }
 
-                let mut res = self.ocr_rgb(rgb, opts.text_conf, 32, &opts.language, &opts.keywords, false, None)?;
-                if res["meta"]["line_count"].as_u64().unwrap_or(0) > 0 {
+                if line_count > 0 {
                     res["meta"]["auto_route"] = json!("standard_ocr");
                     return Ok(res);
                 }
+
                 let mut vis = self.describe_rgb(rgb, opts.conf, opts.text_conf, &opts.language, &opts.keywords)?;
                 vis["meta"]["auto_route"] = json!("scene_vision_fallback");
                 vis["meta"]["elapsed_ms"] = json!(round2(t0.elapsed().as_secs_f64() * 1000.0));
@@ -527,44 +619,128 @@ impl OCREngine {
         }
     }
 
-    fn process_pdf_pages(&self, pages: Vec<RgbImage>, opts: &SmartOptions) -> Result<Value> {
+    pub fn redact_image_bytes(
+        &self,
+        data: &[u8],
+        custom_terms: &[String],
+        style: RedactStyle,
+        enhance: bool,
+        language: &str,
+    ) -> Result<(Vec<u8>, RedactionSummary, f64)> {
         let t0 = Instant::now();
-        let mut page_results = Vec::with_capacity(pages.len());
+        let orig = decode_rgb_bytes(data)?;
+        let ocr_img = if enhance { enhance_for_ocr(&orig) } else { orig.clone() };
+        let (w, h) = ocr_img.dimensions();
+        let tiled = h > 1100 && (h as f64) / (w.max(1) as f64) >= 1.35;
+        let lines = if tiled {
+            run_tiled_ocr(
+                &ocr_img,
+                |strip| self.ocr_single_rgb(strip, 0.25, 32, language, &[]),
+                None,
+                0.22,
+            )?
+            .0
+        } else {
+            self.ocr_single_rgb(&ocr_img, 0.25, 32, language, &[])?
+        };
+        let (redacted_img, summary) = redact_image(&orig, &lines, custom_terms, style);
+        let mut out_png = std::io::Cursor::new(Vec::new());
+        redacted_img.write_to(&mut out_png, image::ImageFormat::Png)?;
+        let elapsed_ms = round2(t0.elapsed().as_secs_f64() * 1000.0);
+        Ok((out_png.into_inner(), summary, elapsed_ms))
+    }
+
+    fn process_pdf_path(&self, path: &Path, opts: &SmartOptions) -> Result<Value> {
+        let t0 = Instant::now();
+        let resolved_form = opts.form.clone().or_else(|| {
+            opts.form_preset
+                .as_deref()
+                .and_then(|k| preset_forms().remove(k))
+        });
+
+        // Fast native-text extraction across all pages in milliseconds via `pdftotext -bbox-layout`.
+        // Only image-only / scanned pages get rasterized and sent to the vision OCR model.
+        let native_pages = extract_native_pdf_pages(path, opts.max_pages)?;
+        let mut page_results = Vec::with_capacity(native_pages.len());
         let mut combined_parts = Vec::new();
         let mut total_lines = 0usize;
         let mut total_tiles = 0usize;
+        let mut native_count = 0usize;
+        let mut ocr_count = 0usize;
+        let mut all_tables = Vec::new();
 
-        for (idx, page_img) in pages.into_iter().enumerate() {
-            let page_num = idx + 1;
-            let (pw, ph) = page_img.dimensions();
-            let mut page_opts = opts.clone();
-            if (opts.mode == "auto" || opts.mode == "tiled")
-                && (ph > 1100 || (ph as f64) / (pw.max(1) as f64) > 1.35)
-            {
-                page_opts.mode = "tiled".into();
-            }
-            let res = self.smart_process_rgb(&page_img, &page_opts)?;
-            let text = res["text"].as_str().unwrap_or("").to_string();
-            let lines = res.get("lines").cloned().unwrap_or_else(|| json!([]));
-            let line_cnt = lines.as_array().map(|a| a.len()).unwrap_or(0);
-            total_lines += line_cnt;
-            total_tiles += res["meta"]["tiles_processed"].as_u64().unwrap_or(1) as usize;
+        for np in native_pages {
+            let pt0 = Instant::now();
+            if np.has_usable_text() && opts.mode != "vision" && opts.mode != "tiled" {
+                native_count += 1;
+                let tables = extract_tables_from_words(&np.words);
+                let classification = classify_page(&np.text, &np.lines, &tables, false);
+                let entities = extract_intelligence(&np.text, &np.lines);
+                let fields_val = if opts.mode == "form" {
+                    resolved_form
+                        .as_ref()
+                        .map(|schema| json!({ "form": extract_grounded_form(schema, &np.text, &np.lines, &classification) }))
+                        .unwrap_or(Value::Null)
+                } else {
+                    Value::Null
+                };
 
-            if !text.is_empty() {
-                combined_parts.push(format!("--- Page {} ---\n{}", page_num, text));
+                total_lines += np.lines.len();
+                all_tables.extend(tables.clone());
+                if !np.text.is_empty() {
+                    combined_parts.push(format!("--- Page {} ---\n{}", np.page, np.text));
+                }
+                page_results.push(json!({
+                    "page": np.page,
+                    "width": np.width,
+                    "height": np.height,
+                    "text": np.text,
+                    "lines": np.lines,
+                    "tables": tables,
+                    "classification": classification,
+                    "entities": entities,
+                    "fields": fields_val,
+                    "scene": Value::Null,
+                    "objects": Value::Null,
+                    "auto_route": "pdf_native_fast",
+                    "elapsed_ms": round2(pt0.elapsed().as_secs_f64() * 1000.0)
+                }));
+            } else {
+                ocr_count += 1;
+                let page_img = render_single_pdf_page(path, np.page, opts.dpi)?;
+                let (pw, ph) = page_img.dimensions();
+                let res = self.smart_process_rgb(&page_img, opts)?;
+                let text = res["text"].as_str().unwrap_or("").to_string();
+                let lines = res.get("lines").cloned().unwrap_or_else(|| json!([]));
+                let line_cnt = lines.as_array().map(|a| a.len()).unwrap_or(0);
+                total_lines += line_cnt;
+                total_tiles += res["meta"]["tiles_processed"].as_u64().unwrap_or(1) as usize;
+                if let Some(ts) = res.get("tables").and_then(|v| v.as_array()) {
+                    for t in ts {
+                        if let Ok(parsed) = serde_json::from_value(t.clone()) {
+                            all_tables.push(parsed);
+                        }
+                    }
+                }
+                if !text.is_empty() {
+                    combined_parts.push(format!("--- Page {} ---\n{}", np.page, text));
+                }
+                page_results.push(json!({
+                    "page": np.page,
+                    "width": pw,
+                    "height": ph,
+                    "text": text,
+                    "lines": lines,
+                    "tables": res.get("tables").cloned().unwrap_or_else(|| json!([])),
+                    "classification": res.get("classification").cloned().unwrap_or(Value::Null),
+                    "entities": res.get("entities").cloned().unwrap_or(Value::Null),
+                    "fields": res.get("fields").cloned().unwrap_or(Value::Null),
+                    "scene": res.get("scene").cloned().unwrap_or(Value::Null),
+                    "objects": res.get("objects").cloned().unwrap_or(Value::Null),
+                    "auto_route": format!("pdf_{}", res["meta"]["auto_route"].as_str().unwrap_or(&opts.mode)),
+                    "elapsed_ms": round2(pt0.elapsed().as_secs_f64() * 1000.0)
+                }));
             }
-            page_results.push(json!({
-                "page": page_num,
-                "width": pw,
-                "height": ph,
-                "text": text,
-                "lines": lines,
-                "fields": res.get("fields").cloned().unwrap_or(Value::Null),
-                "scene": res.get("scene").cloned().unwrap_or(Value::Null),
-                "objects": res.get("objects").cloned().unwrap_or(Value::Null),
-                "auto_route": res["meta"]["auto_route"].as_str().unwrap_or(&opts.mode),
-                "elapsed_ms": res["meta"]["elapsed_ms"].as_f64().unwrap_or(0.0)
-            }));
         }
 
         let first_lines = page_results
@@ -572,17 +748,36 @@ impl OCREngine {
             .and_then(|p| p.get("lines"))
             .cloned()
             .unwrap_or_else(|| json!([]));
+        let combined_text = combined_parts.join("\n\n");
+        let first_class = page_results
+            .first()
+            .and_then(|p| p.get("classification"))
+            .cloned()
+            .unwrap_or(Value::Null);
+
+        let route = if ocr_count == 0 {
+            "pdf_native_fast".to_string()
+        } else if native_count > 0 {
+            "pdf_hybrid".to_string()
+        } else {
+            format!("pdf_{}", opts.mode)
+        };
 
         Ok(json!({
-            "text": combined_parts.join("\n\n"),
+            "text": combined_text,
             "pages": page_results,
             "lines": first_lines,
+            "tables": all_tables,
+            "classification": first_class,
             "meta": {
                 "is_pdf": true,
                 "page_count": page_results.len(),
+                "native_pages": native_count,
+                "ocr_pages": ocr_count,
                 "line_count": total_lines,
+                "table_count": all_tables.len(),
                 "tiles_processed": total_tiles,
-                "auto_route": format!("pdf_{}", opts.mode),
+                "auto_route": route,
                 "elapsed_ms": round2(t0.elapsed().as_secs_f64() * 1000.0)
             }
         }))
@@ -595,8 +790,10 @@ impl OCREngine {
         opts: &SmartOptions,
     ) -> Result<Value> {
         if is_pdf_bytes(data, filename) {
-            let pages = render_pdf_bytes(data, opts.dpi, opts.max_pages)?;
-            return self.process_pdf_pages(pages, opts);
+            let tmp = tempfile::TempDir::new().context("failed to create temp dir for PDF")?;
+            let p = tmp.path().join("input.pdf");
+            fs::write(&p, data)?;
+            return self.process_pdf_path(&p, opts);
         }
         let rgb = decode_rgb_bytes(data)?;
         self.smart_process_rgb(&rgb, opts)
@@ -604,8 +801,7 @@ impl OCREngine {
 
     pub fn smart_process_file(&self, path: &Path, opts: &SmartOptions) -> Result<Value> {
         if is_pdf_path(path) {
-            let pages = render_pdf_file(path, opts.dpi, opts.max_pages)?;
-            return self.process_pdf_pages(pages, opts);
+            return self.process_pdf_path(path, opts);
         }
         let data = fs::read(path).with_context(|| format!("failed to read {}", path.display()))?;
         let rgb = decode_rgb_bytes(&data)?;

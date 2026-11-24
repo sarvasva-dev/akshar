@@ -446,6 +446,95 @@
       z-index: 60;
     }
     #toast.show { opacity: 1; transform: translate(-50%, 0); }
+
+    /* Entity chips & redacted banner */
+    .entity-bar {
+      display: none;
+      flex-wrap: wrap;
+      gap: 6px;
+    }
+    .entity-chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      font-size: 12px;
+      padding: 4px 10px;
+      border-radius: 999px;
+      background: var(--accent-soft);
+      color: var(--accent);
+      border: 1px solid #dbeafe;
+      cursor: pointer;
+    }
+    .entity-chip:hover { background: #dbeafe; }
+    .entity-chip .ek { font-size: 10.5px; opacity: 0.75; text-transform: uppercase; font-weight: 600; }
+
+    /* Spotlight Search Modal */
+    .modal-wrap {
+      position: fixed;
+      inset: 0;
+      display: none;
+      align-items: flex-start;
+      justify-content: center;
+      padding-top: 10vh;
+      background: rgba(17, 24, 39, 0.28);
+      z-index: 55;
+    }
+    .modal-wrap.open { display: flex; }
+    .search-modal {
+      width: 580px;
+      max-width: 92vw;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      box-shadow: 0 20px 50px rgba(0, 0, 0, 0.14);
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+    }
+    .search-top {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 13px 16px;
+      border-bottom: 1px solid var(--border);
+    }
+    .search-top input {
+      flex: 1;
+      border: 0;
+      outline: none;
+      font-size: 14.5px;
+      color: var(--text);
+      background: transparent;
+    }
+    .search-results {
+      max-height: 380px;
+      overflow-y: auto;
+      padding: 8px;
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+    .search-hit {
+      padding: 10px 12px;
+      border-radius: 9px;
+      cursor: pointer;
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      border: 1px solid transparent;
+    }
+    .search-hit:hover { background: var(--bg); border-color: var(--border); }
+    .search-hit-head { display: flex; justify-content: space-between; font-size: 13px; font-weight: 600; }
+    .search-hit-snip { font-size: 12.5px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .kbd {
+      font-size: 11px;
+      color: var(--muted);
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 5px;
+      padding: 1px 5px;
+      font-family: ui-monospace, monospace;
+    }
   </style>
 </head>
 <body>
@@ -459,13 +548,23 @@
       <span class="logo-name" id="appName">Akshar</span>
     </div>
 
-    <button class="icon-btn" id="openDrawerBtn" type="button">
-      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-        <circle cx="12" cy="12" r="3"></circle>
-        <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9c.26.604.852.997 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
-      </svg>
-      Settings &amp; Watch
-    </button>
+    <div style="display:flex;align-items:center;gap:8px">
+      <button class="icon-btn" id="openSearchBtn" type="button">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <circle cx="11" cy="11" r="8"></circle>
+          <path d="m21 21-4.3-4.3"></path>
+        </svg>
+        Search <span class="kbd">Ctrl+K</span>
+      </button>
+
+      <button class="icon-btn" id="openDrawerBtn" type="button">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <circle cx="12" cy="12" r="3"></circle>
+          <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9c.26.604.852.997 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
+        </svg>
+        Settings &amp; Watch
+      </button>
+    </div>
   </header>
 
   <main>
@@ -518,8 +617,13 @@
         <div class="panel">
           <div class="panel-head">
             <span class="meta-line" id="resultMeta">Reading…</span>
-            <button class="btn ghost sm" id="reRunBtn" type="button" style="display:none">Re-run</button>
+            <div style="display:flex;gap:4px">
+              <button class="btn ghost sm" id="tableToggleBtn" type="button" style="display:none">Table view</button>
+              <button class="btn ghost sm" id="reRunBtn" type="button" style="display:none">Re-run</button>
+            </div>
           </div>
+
+          <div class="entity-bar" id="entityBar"></div>
 
           <div class="loading-state" id="loadingState">
             <div class="shimmer" style="width:92%"></div>
@@ -533,6 +637,8 @@
           <div class="actions">
             <button class="btn primary" id="copyBtn" type="button" disabled>Copy text</button>
             <button class="btn" id="txtBtn" type="button" disabled>Save .txt</button>
+            <button class="btn" id="redactBtn" type="button" disabled style="display:none">Redact PII</button>
+            <button class="btn" id="downloadRedactedBtn" type="button" style="display:none">Save redacted.png</button>
             <button class="btn ghost sm" id="jsonBtn" type="button" disabled style="margin-left:auto">JSON</button>
           </div>
         </div>
@@ -575,6 +681,13 @@
             <option value="pl">Polish</option>
           </select>
         </div>
+        <label class="toggle">
+          <input type="checkbox" id="optEnhance" /> Enhance blurry / low-contrast scans
+        </label>
+        <div class="field">
+          <label for="optRedactTerms">Extra words to redact (comma-separated)</label>
+          <input id="optRedactTerms" type="text" placeholder="e.g. Company Name, Account ID" />
+        </div>
       </div>
 
       <div class="section">
@@ -606,6 +719,17 @@
       </div>
     </div>
   </aside>
+
+  <div class="modal-wrap" id="searchModal">
+    <div class="search-modal" role="dialog" aria-label="Search scanned documents">
+      <div class="search-top">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#6b7280" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"></circle><path d="m21 21-4.3-4.3"></path></svg>
+        <input id="searchInput" type="text" placeholder="Search all previously scanned documents & PDFs…" autocomplete="off" />
+        <button class="btn ghost sm" id="closeSearchBtn" type="button">Esc</button>
+      </div>
+      <div class="search-results" id="searchResults"></div>
+    </div>
+  </div>
 
   <div id="toast"></div>
 
@@ -649,13 +773,19 @@
       await refreshWatcher(true);
     }
 
-    function formatHumanOutput(data) {
+    function formatHumanOutput(data, preferTable = false) {
       if (!data) return '';
+      if (preferTable && data.entities && data.entities.markdown_table) {
+        return data.entities.markdown_table;
+      }
       if (data.fields) {
         const form = data.fields.form || data.fields;
         return Object.entries(form)
           .map(([k, v]) => `${k.replace(/_/g, ' ')}: ${typeof v === 'object' && v && 'value' in v ? v.value : JSON.stringify(v)}`)
           .join('\n');
+      }
+      if (data.entities && data.entities.reconstructed_text && data.entities.reconstructed_text.trim()) {
+        return data.entities.reconstructed_text;
       }
       if (data.text && data.text.trim()) {
         return data.text;
@@ -679,6 +809,29 @@
       return 'No text found in this image.';
     }
 
+    function renderEntities(data) {
+      const bar = $('entityBar');
+      bar.innerHTML = '';
+      const ent = data?.entities;
+      if (!ent) { bar.style.display = 'none'; return; }
+      const chips = [];
+      (ent.amounts || []).forEach((v) => chips.push(['Amount', v]));
+      (ent.emails || []).forEach((v) => chips.push(['Email', v]));
+      (ent.phones || []).forEach((v) => chips.push(['Phone', v]));
+      (ent.dates || []).forEach((v) => chips.push(['Date', v]));
+      (ent.ids || []).forEach((v) => chips.push(['ID', v]));
+      if (!chips.length) { bar.style.display = 'none'; return; }
+      bar.style.display = 'flex';
+      chips.slice(0, 10).forEach(([kind, val]) => {
+        const b = document.createElement('button');
+        b.type = 'button';
+        b.className = 'entity-chip';
+        b.innerHTML = `<span class="ek">${escapeHtml(kind)}</span><span>${escapeHtml(val)}</span>`;
+        b.onclick = () => { navigator.clipboard.writeText(val); toast(`Copied ${val}`); };
+        bar.appendChild(b);
+      });
+    }
+
     async function addFiles(fileList) {
       const files = [...fileList].filter((f) =>
         f && (f.type.startsWith('image/') || f.type === 'application/pdf' || f.name.toLowerCase().endsWith('.pdf'))
@@ -699,6 +852,10 @@
           name: file.name,
           isPdf,
           img: null,
+          redactedImg: null,
+          redactedB64: null,
+          redactedText: null,
+          showTable: false,
           status: 'busy',
           result: null,
           error: null,
@@ -731,6 +888,9 @@
     async function processEntry(entry) {
       entry.status = 'busy';
       entry.error = null;
+      entry.redactedImg = null;
+      entry.redactedB64 = null;
+      entry.redactedText = null;
       renderPills();
       if (entries[activeIdx] === entry) renderActive();
 
@@ -738,6 +898,7 @@
       fd.append('file', entry.file);
       fd.append('mode', $('optMode').value);
       fd.append('language', $('optLang').value);
+      if ($('optEnhance').checked) fd.append('enhance', 'true');
       if ($('optMode').value === 'form' && $('optPreset').value) {
         fd.append('form_preset', $('optPreset').value);
       }
@@ -772,13 +933,15 @@
 
     function drawEntryCanvas(entry) {
       const canvas = $('canvas');
-      if (!entry.img) { canvas.style.display = 'none'; return; }
+      const imgToDraw = entry.redactedImg || entry.img;
+      if (!imgToDraw) { canvas.style.display = 'none'; return; }
       canvas.style.display = 'block';
-      canvas.width = entry.img.naturalWidth;
-      canvas.height = entry.img.naturalHeight;
+      canvas.width = imgToDraw.naturalWidth;
+      canvas.height = imgToDraw.naturalHeight;
       const ctx = canvas.getContext('2d');
-      ctx.drawImage(entry.img, 0, 0);
+      ctx.drawImage(imgToDraw, 0, 0);
 
+      if (entry.redactedImg) return;
       const items = getOverlayItems(entry);
       if (!$('showBoxes').checked || !items.length) return;
       const accent = getComputedStyle(document.documentElement).getPropertyValue('--accent').trim() || '#2563eb';
@@ -841,6 +1004,10 @@
       if (entry.status === 'busy') {
         $('loadingState').style.display = 'flex';
         $('resultText').style.display = 'none';
+        $('entityBar').style.display = 'none';
+        $('tableToggleBtn').style.display = 'none';
+        $('redactBtn').style.display = 'none';
+        $('downloadRedactedBtn').style.display = 'none';
         $('resultMeta').textContent = 'Reading document…';
         $('reRunBtn').style.display = 'none';
         ['copyBtn', 'txtBtn', 'jsonBtn'].forEach((id) => ($(id).disabled = true));
@@ -854,6 +1021,9 @@
       if (entry.status === 'err') {
         $('resultMeta').textContent = 'Error';
         $('resultText').value = entry.error;
+        $('entityBar').style.display = 'none';
+        $('redactBtn').style.display = 'none';
+        $('downloadRedactedBtn').style.display = 'none';
         ['copyBtn', 'txtBtn', 'jsonBtn'].forEach((id) => ($(id).disabled = true));
         return;
       }
@@ -867,11 +1037,22 @@
       else if (m.object_count > 0) summaryParts.unshift(`Photo summary`);
       $('resultMeta').textContent = summaryParts.join(' · ');
 
-      if (entry.isPdf && entry.activePage > 0 && r.pages) {
+      renderEntities(r);
+      const hasTable = Boolean(r.entities && r.entities.markdown_table);
+      $('tableToggleBtn').style.display = hasTable ? 'inline-flex' : 'none';
+      $('tableToggleBtn').textContent = entry.showTable ? 'Plain text' : 'Table view';
+
+      $('redactBtn').style.display = (!entry.isPdf && m.line_count > 0) ? 'inline-flex' : 'none';
+      $('redactBtn').disabled = false;
+      $('downloadRedactedBtn').style.display = entry.redactedB64 ? 'inline-flex' : 'none';
+
+      if (entry.redactedText) {
+        $('resultText').value = entry.redactedText;
+      } else if (entry.isPdf && entry.activePage > 0 && r.pages) {
         const pg = r.pages.find((p) => p.page === entry.activePage);
         $('resultText').value = pg ? (pg.text || 'No text on this page.') : '';
       } else {
-        $('resultText').value = formatHumanOutput(r);
+        $('resultText').value = formatHumanOutput(r, entry.showTable);
       }
       ['copyBtn', 'txtBtn', 'jsonBtn'].forEach((id) => ($(id).disabled = false));
     }
@@ -969,6 +1150,101 @@
     $('optPreset').addEventListener('change', () => {
       if (entries[activeIdx] && $('optMode').value === 'form') processEntry(entries[activeIdx]);
     });
+    $('optEnhance').addEventListener('change', () => {
+      if (entries[activeIdx]) processEntry(entries[activeIdx]);
+    });
+    $('tableToggleBtn').addEventListener('click', () => {
+      const e = entries[activeIdx];
+      if (!e) return;
+      e.showTable = !e.showTable;
+      renderActive();
+    });
+
+    $('redactBtn').addEventListener('click', async () => {
+      const entry = entries[activeIdx];
+      if (!entry || entry.isPdf) return;
+      $('redactBtn').disabled = true;
+      $('redactBtn').textContent = 'Redacting…';
+      const fd = new FormData();
+      fd.append('file', entry.file);
+      fd.append('language', $('optLang').value);
+      if ($('optEnhance').checked) fd.append('enhance', 'true');
+      const custom = $('optRedactTerms').value.trim();
+      if (custom) fd.append('custom_terms', custom);
+      try {
+        const res = await fetch(`${apiPrefix}/redact`, { method: 'POST', body: fd });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.detail || 'Redaction failed');
+        entry.redactedB64 = data.redacted_image_base64;
+        entry.redactedText = data.redacted_text;
+        const img = new Image();
+        img.onload = () => {
+          entry.redactedImg = img;
+          renderActive();
+          toast(data.redacted_count ? `Redacted ${data.redacted_count} sensitive region(s)` : 'No sensitive PII matched (add custom words in Settings)');
+        };
+        img.src = `data:image/png;base64,${data.redacted_image_base64}`;
+      } catch (err) {
+        toast(err.message);
+      } finally {
+        $('redactBtn').textContent = 'Redact PII';
+        $('redactBtn').disabled = false;
+      }
+    });
+
+    $('downloadRedactedBtn').addEventListener('click', () => {
+      const entry = entries[activeIdx];
+      if (!entry?.redactedB64) return;
+      const a = document.createElement('a');
+      a.href = `data:image/png;base64,${entry.redactedB64}`;
+      a.download = `${entry.name.replace(/\.[^.]+$/, '')}_redacted.png`;
+      a.click();
+    });
+
+    // Spotlight local search modal (Ctrl+K)
+    function toggleSearch(open) {
+      $('searchModal').classList.toggle('open', open);
+      if (open) {
+        $('searchInput').focus();
+        runSearch($('searchInput').value);
+      }
+    }
+    $('openSearchBtn').addEventListener('click', () => toggleSearch(true));
+    $('closeSearchBtn').addEventListener('click', () => toggleSearch(false));
+    $('searchModal').addEventListener('click', (e) => { if (e.target === $('searchModal')) toggleSearch(false); });
+    window.addEventListener('keydown', (e) => {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') { e.preventDefault(); toggleSearch(true); }
+      if (e.key === 'Escape') { toggleSearch(false); openDrawer(false); }
+    });
+    let searchDebounce = null;
+    $('searchInput').addEventListener('input', (e) => {
+      clearTimeout(searchDebounce);
+      searchDebounce = setTimeout(() => runSearch(e.target.value), 120);
+    });
+    async function runSearch(q) {
+      const box = $('searchResults');
+      try {
+        const res = await fetch(`${apiPrefix}/search?q=${encodeURIComponent(q || '')}&limit=20`);
+        const data = await res.json();
+        const items = data.results || [];
+        if (!items.length) {
+          box.innerHTML = `<div style="padding:20px;text-align:center;font-size:13px;color:var(--muted)">${data.total_indexed ? 'No matching documents.' : 'No indexed documents yet. Scan an image or PDF first.'}</div>`;
+          return;
+        }
+        box.innerHTML = '';
+        items.forEach((doc) => {
+          const row = document.createElement('div');
+          row.className = 'search-hit';
+          row.innerHTML = `<div class="search-hit-head"><span>${escapeHtml(doc.filename)}</span><span style="font-size:11.5px;color:var(--muted)">${escapeHtml(doc.created_at.slice(0, 10))} · ${doc.line_count} lines</span></div><div class="search-hit-snip">${escapeHtml(doc.snippet || doc.text)}</div>`;
+          row.onclick = () => {
+            navigator.clipboard.writeText(doc.text);
+            toast(`Copied text from ${doc.filename}`);
+            toggleSearch(false);
+          };
+          box.appendChild(row);
+        });
+      } catch {}
+    }
 
     async function refreshWatcher(fill) {
       try {
