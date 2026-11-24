@@ -20,6 +20,15 @@ pub struct IndexedDoc {
     pub text: String,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ReviewItem {
+    pub id: i64,
+    pub filename: String,
+    pub reasons: Vec<String>,
+    pub result_json: String,
+    pub created_at: String,
+}
+
 #[derive(Clone)]
 pub struct SearchIndex {
     db_path: PathBuf,
@@ -59,7 +68,14 @@ impl SearchIndex {
              END;
              CREATE TRIGGER IF NOT EXISTS documents_ad AFTER DELETE ON documents BEGIN
                  INSERT INTO documents_fts(documents_fts, rowid, filename, text) VALUES ('delete', old.id, old.filename, old.text);
-             END;",
+             END;
+             CREATE TABLE IF NOT EXISTS review_items (
+                 id INTEGER PRIMARY KEY AUTOINCREMENT,
+                 filename TEXT NOT NULL,
+                 reasons_json TEXT NOT NULL DEFAULT '[]',
+                 result_json TEXT NOT NULL DEFAULT '{}',
+                 created_at TEXT NOT NULL
+             );",
         )?;
         Ok(Self {
             db_path: path.to_path_buf(),
@@ -164,6 +180,51 @@ impl SearchIndex {
     pub fn delete(&self, id: i64) -> Result<bool> {
         let conn = self.conn.lock().unwrap();
         let n = conn.execute("DELETE FROM documents WHERE id = ?1", params![id])?;
+        Ok(n > 0)
+    }
+
+    pub fn add_review_item(
+        &self,
+        filename: &str,
+        reasons: &[String],
+        result: &serde_json::Value,
+    ) -> Result<i64> {
+        let now = Utc::now().format("%Y-%m-%dT%H:%M:%SZ").to_string();
+        let reasons_json = serde_json::to_string(reasons).unwrap_or_else(|_| "[]".into());
+        let res_json = serde_json::to_string(result).unwrap_or_else(|_| "{}".into());
+        let conn = self.conn.lock().unwrap();
+        conn.execute(
+            "INSERT INTO review_items (filename, reasons_json, result_json, created_at) VALUES (?1, ?2, ?3, ?4)",
+            params![filename, reasons_json, res_json, now],
+        )?;
+        Ok(conn.last_insert_rowid())
+    }
+
+    pub fn list_review_items(&self, limit: usize) -> Result<Vec<ReviewItem>> {
+        let conn = self.conn.lock().unwrap();
+        let mut stmt = conn.prepare(
+            "SELECT id, filename, reasons_json, result_json, created_at FROM review_items ORDER BY id DESC LIMIT ?1",
+        )?;
+        let rows = stmt
+            .query_map(params![limit.clamp(1, 100) as i64], |r| {
+                let reasons_str: String = r.get(2)?;
+                let reasons: Vec<String> = serde_json::from_str(&reasons_str).unwrap_or_default();
+                Ok(ReviewItem {
+                    id: r.get(0)?,
+                    filename: r.get(1)?,
+                    reasons,
+                    result_json: r.get(3)?,
+                    created_at: r.get(4)?,
+                })
+            })?
+            .filter_map(|r| r.ok())
+            .collect();
+        Ok(rows)
+    }
+
+    pub fn resolve_review_item(&self, id: i64) -> Result<bool> {
+        let conn = self.conn.lock().unwrap();
+        let n = conn.execute("DELETE FROM review_items WHERE id = ?1", params![id])?;
         Ok(n > 0)
     }
 }

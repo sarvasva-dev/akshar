@@ -187,6 +187,7 @@ mod tests {
             ],
             cells: vec![],
             markdown: String::new(),
+            table_uncertain: false,
         };
         let res = classify_page("Item Qty Price\nPen 10 50\nBook 4 200", &[], &[tbl], false);
         assert_eq!(res.document_type, "table");

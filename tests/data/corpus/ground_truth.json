@@ -1,0 +1,302 @@
+{
+  "inv_01_tech_consulting.png": {
+    "vendor_name": "Apex Digital Solutions Pvt Ltd",
+    "gstin": "07AABCT2432A1Z1",
+    "invoice_number": "INV-2026-901",
+    "date": "24/11/2026",
+    "subtotal": 85000.0,
+    "tax_amount": 15300.0,
+    "total_amount": "\u20b9 100,300.00",
+    "arithmetic_valid": true,
+    "doc_type": "invoice",
+    "has_handwriting": false
+  },
+  "inv_02_retail_hardware.png": {
+    "vendor_name": "Sharma Hardware & Tools Pvt Ltd",
+    "gstin": "07AAACS1429B1Z2",
+    "invoice_number": "SH-8821",
+    "date": "24/11/2026",
+    "subtotal": 12500.0,
+    "tax_amount": 2250.0,
+    "total_amount": "\u20b9 14,750.00",
+    "arithmetic_valid": true,
+    "doc_type": "invoice",
+    "has_handwriting": false
+  },
+  "inv_03_medical_supply.png": {
+    "vendor_name": "MediCare Lifesciences Pvt Ltd",
+    "gstin": "07AABCM9102K1Z3",
+    "invoice_number": "MED-4410",
+    "date": "22/11/2026",
+    "subtotal": 24000.0,
+    "tax_amount": 2880.0,
+    "total_amount": "\u20b9 26,880.00",
+    "arithmetic_valid": true,
+    "doc_type": "invoice",
+    "has_handwriting": false
+  },
+  "inv_04_interstate_igst.png": {
+    "vendor_name": "CloudGrid Networks India Pvt Ltd",
+    "gstin": "27AABCC3311E1Z8",
+    "invoice_number": "CG-2026-118",
+    "date": "21/11/2026",
+    "subtotal": 55000.0,
+    "tax_amount": 9900.0,
+    "total_amount": "\u20b9 64,900.00",
+    "arithmetic_valid": true,
+    "doc_type": "invoice",
+    "has_handwriting": false
+  },
+  "inv_05_freight_logistics.png": {
+    "vendor_name": "SpeedyLog Freight Carriers Pvt Ltd",
+    "gstin": "07AABCS5522D1Z4",
+    "invoice_number": "LOG-992",
+    "date": "20/11/2026",
+    "subtotal": 38000.0,
+    "tax_amount": 4560.0,
+    "total_amount": "\u20b9 42,560.00",
+    "arithmetic_valid": true,
+    "doc_type": "invoice",
+    "has_handwriting": false
+  },
+  "inv_06_automotive_parts.png": {
+    "vendor_name": "Superb Auto Care Motors Pvt Ltd",
+    "gstin": "07AABCS6633F1Z9",
+    "invoice_number": "MOT-1029",
+    "date": "19/11/2026",
+    "subtotal": 11800.0,
+    "tax_amount": 2124.0,
+    "total_amount": "\u20b9 13,924.00",
+    "arithmetic_valid": true,
+    "doc_type": "invoice",
+    "has_handwriting": false
+  },
+  "inv_07_printing_packaging.png": {
+    "vendor_name": "Vibrant Print Media Enterprises",
+    "gstin": "07AABCV7744G1Z5",
+    "invoice_number": "PRN-5510",
+    "date": "18/11/2026",
+    "subtotal": 20500.0,
+    "tax_amount": 3690.0,
+    "total_amount": "\u20b9 24,190.00",
+    "arithmetic_valid": true,
+    "doc_type": "invoice",
+    "has_handwriting": false
+  },
+  "inv_08_electrical_contractor.png": {
+    "vendor_name": "PowerTech Electricals Pvt Ltd",
+    "gstin": "07AABCP8855H1Z6",
+    "invoice_number": "PWR-302",
+    "date": "17/11/2026",
+    "subtotal": 37000.0,
+    "tax_amount": 6660.0,
+    "total_amount": "\u20b9 43,660.00",
+    "arithmetic_valid": true,
+    "doc_type": "invoice",
+    "has_handwriting": false
+  },
+  "inv_09_cloud_infrastructure.png": {
+    "vendor_name": "SkyLine Hosting Services Pvt Ltd",
+    "gstin": "07AABCS9966J1Z7",
+    "invoice_number": "SKY-771",
+    "date": "16/11/2026",
+    "subtotal": 9500.0,
+    "tax_amount": 1710.0,
+    "total_amount": "\u20b9 11,210.00",
+    "arithmetic_valid": true,
+    "doc_type": "invoice",
+    "has_handwriting": false
+  },
+  "inv_10_office_furniture.png": {
+    "vendor_name": "Modern Office Decor Pvt Ltd",
+    "gstin": "07AABCM1122K1Z0",
+    "invoice_number": "FUR-889",
+    "date": "15/11/2026",
+    "subtotal": 70000.0,
+    "tax_amount": 12600.0,
+    "total_amount": "\u20b9 82,600.00",
+    "arithmetic_valid": true,
+    "doc_type": "invoice",
+    "has_handwriting": false
+  },
+  "rcpt_01_grocery_thermal.png": {
+    "merchant": "FreshMart Supermarket",
+    "vendor_name": "FreshMart Supermarket",
+    "date": "24/11/2026",
+    "subtotal": 355.0,
+    "tax_amount": 17.75,
+    "total_amount": "\u20b9 372.75",
+    "arithmetic_valid": true,
+    "doc_type": "receipt",
+    "has_handwriting": false
+  },
+  "rcpt_02_cafe_thermal.png": {
+    "merchant": "The Roasted Bean Cafe",
+    "vendor_name": "The Roasted Bean Cafe",
+    "date": "24/11/2026",
+    "subtotal": 540.0,
+    "tax_amount": 27.0,
+    "total_amount": "\u20b9 567.00",
+    "arithmetic_valid": true,
+    "doc_type": "receipt",
+    "has_handwriting": false
+  },
+  "rcpt_03_fuel_pump.png": {
+    "merchant": "HPCL Auto Care Station",
+    "vendor_name": "HPCL Auto Care Station",
+    "date": "23/11/2026",
+    "subtotal": 2412.5,
+    "tax_amount": 0.0,
+    "total_amount": "\u20b9 2,412.50",
+    "arithmetic_valid": true,
+    "doc_type": "receipt",
+    "has_handwriting": false
+  },
+  "rcpt_04_pharmacy_pos.png": {
+    "merchant": "MedPlus Chemist & Druggist",
+    "vendor_name": "MedPlus Chemist & Druggist",
+    "date": "22/11/2026",
+    "subtotal": 350.0,
+    "tax_amount": 17.5,
+    "total_amount": "\u20b9 367.50",
+    "arithmetic_valid": true,
+    "doc_type": "receipt",
+    "has_handwriting": false
+  },
+  "rcpt_05_restaurant_pos.png": {
+    "merchant": "Urban Spice Bistro",
+    "vendor_name": "Urban Spice Bistro",
+    "date": "21/11/2026",
+    "subtotal": 680.0,
+    "tax_amount": 34.0,
+    "total_amount": "\u20b9 714.00",
+    "arithmetic_valid": true,
+    "doc_type": "receipt",
+    "has_handwriting": false
+  },
+  "stmt_01_hdfc_bank.png": {
+    "doc_type": "document",
+    "vendor_name": "HDFC BANK LIMITED",
+    "total_amount": "\u20b9 145,270.00",
+    "is_table": true,
+    "table_rows": 5,
+    "has_handwriting": false
+  },
+  "stmt_02_sbi_bank.png": {
+    "doc_type": "document",
+    "vendor_name": "STATE BANK OF INDIA",
+    "total_amount": "\u20b9 58,135.00",
+    "is_table": true,
+    "table_rows": 4,
+    "has_handwriting": false
+  },
+  "table_01_price_schedule.png": {
+    "doc_type": "table",
+    "is_table": true,
+    "headers": [
+      "Service Tier",
+      "Active Users",
+      "Cloud Storage",
+      "Support Level",
+      "Monthly Price"
+    ],
+    "row_count": 3,
+    "has_handwriting": false
+  },
+  "table_02_logistics_rate_card.png": {
+    "doc_type": "table",
+    "is_table": true,
+    "headers": [
+      "Freight Destination",
+      "Standard 0-5kg",
+      "Express 5-20kg",
+      "Heavy Cargo 20kg+"
+    ],
+    "row_count": 4,
+    "has_handwriting": false
+  },
+  "bilingual_01_hindi_english.png": {
+    "doc_type": "invoice",
+    "vendor_name": "\u0936\u0930\u094d\u092e\u093e \u0907\u0932\u0947\u0915\u094d\u091f\u094d\u0930\u0949\u0928\u093f\u0915\u094d\u0938 \u0938\u094d\u091f\u094b\u0930",
+    "total_amount": "\u20b9 2,832.00",
+    "gstin": "07AAACS1429B1Z2",
+    "has_devanagari": true,
+    "has_handwriting": false
+  },
+  "photo_01_blurry_phone.png": {
+    "doc_type": "invoice",
+    "vendor_name": "Quantum Analytics LLP",
+    "total_amount": "\u20b9 70,800.00",
+    "subtotal": 60000.0,
+    "tax_amount": 10800.0,
+    "has_handwriting": false
+  },
+  "menu_01_restaurant.png": {
+    "doc_type": "document",
+    "vendor_name": "THE TANDOOR BISTRO",
+    "total_amount": "\u20b9 2,120",
+    "has_handwriting": false
+  },
+  "handwriting_01_memo.png": {
+    "doc_type": "document",
+    "has_handwriting": true,
+    "needs_review": true
+  },
+  "form_01_gov_application.png": {
+    "doc_type": "form",
+    "applicant_name": "Rajesh Kumar Sharma",
+    "dob": "15/08/1988",
+    "id_number": "DL-04201100291",
+    "checkboxes": {
+      "Indian Citizen": true,
+      "Non-Resident Indian": false,
+      "Adult Applicant": true,
+      "Minor Dependent": false
+    },
+    "has_handwriting": true,
+    "needs_review": false
+  },
+  "form_02_customs_declaration.png": {
+    "doc_type": "form",
+    "passenger_name": "Priya S. Patel",
+    "passport_number": "Z8819204",
+    "checkboxes": {
+      "Commercial Merchandise": false,
+      "Personal Baggage Only": true,
+      "Currency Under 10,000 USD": true,
+      "Prohibited Goods": false
+    },
+    "has_stamp": true,
+    "stamp_text": "CUSTOMS INDIA VERIFIED",
+    "has_handwriting": false
+  },
+  "id_01_national_identity.png": {
+    "doc_type": "id_card",
+    "full_name": "AMIT VERMA",
+    "id_number": "ID-9182-4019-3321",
+    "date_of_birth": "12/04/1992",
+    "has_photo": true,
+    "has_handwriting": false
+  },
+  "column_01_academic_paper.png": {
+    "doc_type": "document",
+    "is_multi_column": true,
+    "column_count": 2,
+    "expected_order_keywords": [
+      "1. Introduction",
+      "traditional ocr converts",
+      "guaranteeing correct left-to-right",
+      "2. Related Architectures",
+      "multimodal transformers",
+      "sub-second document recovery"
+    ],
+    "has_handwriting": false
+  },
+  "faded_01_vintage_receipt.png": {
+    "doc_type": "receipt",
+    "has_faded_line": true,
+    "expected_faded_status": "not_visible",
+    "total_amount": "112.50",
+    "has_handwriting": false
+  }
+}

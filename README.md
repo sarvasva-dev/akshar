@@ -24,21 +24,24 @@
 
 ---
 
-**Akshar** is a complete, ultra-fast offline document processing engine compiled to a single **9.7 MB** Rust binary. It combines a native PDF fast-path, high-resolution layout engine with Hindi/Devanagari and Indian Rupee (`₹`) recognition, and a ~21 MB quantized vision model — 100% local on CPU, 0 cloud API keys, and zero data leaving your device.
+**Akshar** is a complete, ultra-fast offline document intelligence engine compiled to a single **9.8 MB** Rust binary. It solves the top 15 real-world OCR problems faced by developers and finance teams worldwide: zero silent wrong numbers via exact `DecimalAmount` arithmetic reconciliation, multi-column reading order preservation, 2D geometric table recovery, cursive handwriting & stamp isolation, Devanagari and Indian Rupee (`₹`) recognition, and resumable SQLite batch queues — 100% offline, 0 cloud API keys, and zero per-page fees.
 
-> 🚀 **Benchmark Highlights:** Process a 3-page hybrid PDF in **318 ms** (110× faster than Mirage's 35 s) and scanned pages in **~200 ms** with 100% deterministic field grounding and zero hallucinations. See full verified numbers in [BENCHMARK.md](BENCHMARK.md).
+> 🚀 **v5 Benchmark Highlights:** Tested across a 28-document authentic real-world corpus: **0 silent money errors**, **21/21 (100%)** invoice totals reconciled or flagged, **100% byte-exact determinism** across 3 runs, and **~580 ms** average CPU latency on 1.5 vCPU. See full verified numbers in [BENCHMARK.md](BENCHMARK.md).
 
-## What Akshar Adds Beyond Raw OCR
+## What Akshar Solves Beyond Traditional OCR
 
+- **Zero Silent Money Errors (Arithmetic Reconciliation)** — stores money as exact cents (`i64`), audits character look-alikes (`O`→`0`, `l`→`1`), dynamically identifies `US_IN` vs `EU` decimal locales, and mathematically validates `subtotal + tax == total`. Mismatches or low-confidence entries are surfaced directly to a human review queue (`needs_review: true`).
+- **Review Queue API & Audit Evidence (`/v1/review`)** — every extracted field includes pixel bounding boxes (`bbox`), normalized coordinates, extraction confidence, and engine provenance. Flagged documents are tracked in local SQLite review tables.
 - **Blazing Fast Hybrid Execution (318 ms vs 35 s)** — digital PDF pages run in ~3 ms via `pdftotext -bbox-layout`, scanned pages process in ~150–200 ms with word-level bounding boxes, and complex natural scene photos seamlessly fall back to Mirage vision.
+- **Multi-Column Reading Order Preservation** — detects central vertical gutters on academic papers and multi-column documents, guaranteeing the left column is completely read before the right column begins (no line interleaving).
+- **Cursive Handwriting, Checkboxes & Stamp Isolation** — detects checkbox states (`[X]` checked vs `[ ]` unchecked), segments red/blue seals (e.g. customs stamps) so ink doesn't corrupt numbers, and flags cursive handwriting regions for human verification instead of hallucinating text.
+- **Faded Ink Detection** — detects physically degraded or vanished thermal lines, returning an honest `not_visible` status rather than fabricating digits.
+- **Resumable Large-Scale Batch Queue (`src/batch.rs`)** — ACID SQLite queue for 1,000+ page archives that supports pause, system crash recovery, and thread-safe cancellation without lost progress.
 - **₹ (Rupee) & Devanagari Recognition** — resolves the hard vocabulary limit of Mirage (which lacks ₹ and Devanagari in its CTC reader) with context-aware currency repair and `hin+eng` confidence fusion.
 - **2D Geometric Table Recovery** — automatically clusters word/line coordinates into clean column matrices (`headers`, `rows`, `cells` with pixel bounding boxes, and Markdown tables).
-- **Confidence-Gated Grounded Extraction (`--preset` / `/v1/extract`)** — extracts fields directly from verified text with full provenance and gates model fallbacks (`>= 0.55` + echo rejection), returning honest `null` when a field is absent instead of hallucinating field names.
 - **Deterministic Page Classification** — classifies each page (`invoice`, `receipt`, `table`, `id_card`, `letter`, `form`, `photo`, `document`, `other`) with confidence and explainable signals.
-- **Adaptive Full-Page Tiled OCR** — single fast pass by default, automatically escalating to overlapping multi-tile OCR when dense text requires multi-strip processing.
 - **Auto-PII Redaction (`--redact` / `/v1/redact`)** — detects emails, phone numbers, Aadhaar/PAN IDs, card numbers, and custom keywords, paints solid-black or pixelated boxes onto the image, and returns a safe PNG + masked text.
 - **Built-in SQLite FTS5 Search (`--search` / `Ctrl+K`)** — automatically indexes every scanned image, PDF, and watched document locally (`data/akshar.db`) for instant full-text search with snippets.
-- **Scan Pre-Enhancement (`--enhance`)** — percentile contrast stretching + unsharp mask sharpening for blurry or low-contrast phone photos.
 - **Live Folder Watcher & Webhooks** — monitors an inbox folder continuously, exports `.json`, `.txt`, `.md`, and `summary.csv`, archives processed files, and optionally triggers HTTP webhooks.
 
 ## Quickstart
@@ -110,6 +113,8 @@ Open **http://127.0.0.1:8000** — drop images or PDFs, press `Ctrl+V` to paste,
 | `POST` | `/v1/batch` | Multi-file image + PDF batch processing |
 | `GET` | `/v1/search?q=...` | Full-text SQLite FTS5 search over indexed documents |
 | `DELETE` | `/v1/search/{id}` | Remove a document from the search index |
+| `GET` | `/v1/review` | Retrieve documents flagged for human review (audit queue) |
+| `DELETE` | `/v1/review/{id}` | Resolve a flagged item in the review queue |
 | `GET` | `/v1/automation/status` | Folder watcher state and job log |
 | `POST` | `/v1/automation/start` | Start or update folder watcher |
 | `POST` | `/v1/automation/stop` | Stop folder watcher |

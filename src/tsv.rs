@@ -111,7 +111,7 @@ fn looks_like_numeric_amount(s: &str) -> bool {
 fn is_rupee_misread_token(s: &str) -> bool {
     matches!(
         s.trim(),
-        "=" | "==" | "¥" | "%" | "हैं" | "है" | "₹" | "र" | "₹." | "Rs" | "Rs." | "INR"
+        "=" | "==" | "¥" | "%" | "हैं" | "है" | "₹" | "र" | "₹." | "Rs" | "Rs." | "INR" | "हू" | "रु" | "रू"
     )
 }
 
@@ -140,14 +140,13 @@ pub fn run_fast_document_ocr(
         return Ok(None);
     }
 
-    // Check if any multi-letter word has low confidence (< 74%), indicating Devanagari/Hindi script
-    let has_low_conf_words = words.iter().any(|w| {
-        let alpha = w.text.chars().filter(|c| c.is_alphabetic()).count();
-        alpha >= 2 && w.conf < 74.0
+    // Check if any word has low confidence or contains Devanagari/misread tokens
+    let has_script_ambiguity = words.iter().any(|w| {
+        w.conf < 76.0 || contains_devanagari(&w.text) || w.text.contains("000") || w.text.contains("ooo")
     });
     let want_hindi = lang.eq_ignore_ascii_case("hi")
         || lang.eq_ignore_ascii_case("hin")
-        || (has_low_conf_words && tess_dir.join("hin.traineddata").is_file());
+        || (has_script_ambiguity && tess_dir.join("hin.traineddata").is_file());
 
     if want_hindi && tess_dir.join("hin.traineddata").is_file() {
         if let Ok(hin_words) = run_tesseract_tsv_file(&img_path, &tess_dir, "hin+eng", None) {
@@ -157,17 +156,27 @@ pub fn run_fast_document_ocr(
             for w in &mut words {
                 if let Some(hw) = hin_words
                     .iter()
-                    .find(|h| word_overlap_ratio(w.bbox, h.bbox) >= 0.45)
+                    .find(|h| word_overlap_ratio(w.bbox, h.bbox) >= 0.40)
                 {
-                    let eng_is_strong_num = w.conf >= 82.0
+                    let eng_is_strong_num = w.conf >= 85.0
                         && w.text.chars().any(|c| c.is_ascii_digit())
                         && !contains_devanagari(&hw.text);
                     if !eng_is_strong_num
-                        && (hw.conf > w.conf + 5.0
-                            || (contains_devanagari(&hw.text) && hw.conf >= 65.0 && w.conf < 78.0))
+                        && (hw.conf > w.conf + 3.0
+                            || (contains_devanagari(&hw.text) && hw.conf >= 45.0))
                     {
                         w.text = hw.text.clone();
                         w.conf = hw.conf;
+                    }
+                }
+            }
+
+            // Append any Hindi words completely missed by English LSTM pass
+            for hw in hin_words {
+                if contains_devanagari(&hw.text) && hw.conf >= 45.0 {
+                    let already_covered = words.iter().any(|w| word_overlap_ratio(w.bbox, hw.bbox) >= 0.35);
+                    if !already_covered {
+                        words.push(hw);
                     }
                 }
             }

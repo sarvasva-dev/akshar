@@ -252,11 +252,21 @@ pub fn extract_grounded_form(
         };
 
         if let Some((val, conf)) = found {
+            let val_s = if let Some(s) = val.as_str() { s.to_string() } else { val.to_string() };
+            let matching_line = lines.iter().find(|l| l.text.contains(&val_s) || val_s.contains(&l.text));
+            let bx = matching_line.map(|l| l.bbox).unwrap_or([0, 0, 0, 0]);
+            let bn = matching_line.map(|l| l.bbox_norm).unwrap_or([0, 0, 0, 0]);
+            let raw = matching_line.map(|l| l.text.clone()).unwrap_or_else(|| val_s.clone());
             out.insert(
                 key.clone(),
                 json!({
                     "value": val,
                     "confidence": (conf * 1000.0).round() / 1000.0,
+                    "bbox": bx,
+                    "bbox_norm": bn,
+                    "raw_text": raw,
+                    "engine": "fast_document_tsv",
+                    "repairs_applied": Vec::<String>::new(),
                     "source": "ocr_grounded"
                 }),
             );
@@ -266,6 +276,11 @@ pub fn extract_grounded_form(
                 json!({
                     "value": Value::Null,
                     "confidence": 0.0,
+                    "bbox": [0, 0, 0, 0],
+                    "bbox_norm": [0, 0, 0, 0],
+                    "raw_text": "",
+                    "engine": "fast_document_tsv",
+                    "repairs_applied": Vec::<String>::new(),
                     "source": "none"
                 }),
             );
@@ -331,7 +346,18 @@ fn extract_total_amount(lines: &[&str], entities: &ExtractedEntities) -> Option<
         Regex::new(r"(?i)(?:₹|rs\.?|inr|\$|usd|€|eur|£|gbp)?\s*\d[\d,]*(?:\.\d{1,2})?(?:\s*(?:rupees?|inr|usd|eur|gbp|rs\.?))?").unwrap()
     });
 
-    // Check reconstructed rows first (merges 2-column "GRAND TOTAL   ₹ 736.91")
+    let full_doc = lines.join("\n").to_lowercase();
+    let is_indian = full_doc.contains("gst")
+        || full_doc.contains('₹')
+        || full_doc.contains("inr")
+        || full_doc.contains("rupee")
+        || full_doc.contains("pvt")
+        || full_doc.contains("ltd")
+        || full_doc.contains("delhi")
+        || full_doc.contains("mumbai")
+        || full_doc.contains("india")
+        || full_doc.chars().any(|c| ('\u{0900}'..='\u{097F}').contains(&c));
+
     let recon_lines: Vec<&str> = entities
         .reconstructed_text
         .lines()
@@ -349,14 +375,23 @@ fn extract_total_amount(lines: &[&str], entities: &ExtractedEntities) -> Option<
             || low.contains("net payable")
             || low.contains("total payable")
             || low.contains("कुल राशि")
+            || low.contains("total cash")
+            || low.contains("total bill")
             || low.starts_with("total")
         {
             if let Some(m) = re_amount().find(line) {
-                return Some(m.as_str().trim().to_string());
+                let s = m.as_str().trim();
+                if let Some((d, _)) = crate::validate::DecimalAmount::parse(s, is_indian) {
+                    return Some(d.formatted);
+                }
+                return Some(s.to_string());
             }
             if let Some(m) = re_num.find(line) {
                 let s = m.as_str().trim();
                 if s.chars().any(|c| c.is_ascii_digit()) {
+                    if let Some((d, _)) = crate::validate::DecimalAmount::parse(s, is_indian) {
+                        return Some(d.formatted);
+                    }
                     return Some(s.to_string());
                 }
             }
@@ -365,13 +400,23 @@ fn extract_total_amount(lines: &[&str], entities: &ExtractedEntities) -> Option<
                 if let Some(m) = re_amount().find(next_line).or_else(|| re_num.find(next_line)) {
                     let s = m.as_str().trim();
                     if s.chars().any(|c| c.is_ascii_digit()) {
+                        if let Some((d, _)) = crate::validate::DecimalAmount::parse(s, is_indian) {
+                            return Some(d.formatted);
+                        }
                         return Some(s.to_string());
                     }
                 }
             }
         }
     }
-    entities.amounts.last().cloned()
+
+    if let Some(last_amt) = entities.amounts.last() {
+        if let Some((d, _)) = crate::validate::DecimalAmount::parse(last_amt, is_indian) {
+            return Some(d.formatted);
+        }
+        return Some(last_amt.clone());
+    }
+    None
 }
 
 fn extract_labeled_code(lines: &[&str], prefixes: &[&str]) -> Option<String> {
@@ -396,25 +441,29 @@ fn extract_labeled_code(lines: &[&str], prefixes: &[&str]) -> Option<String> {
 }
 
 fn extract_vendor_header(lines: &[&str]) -> Option<String> {
-    // 1. Explicit label on any line: "Vendor: ...", "Merchant: ...", "Seller: ..."
-    for line in lines.iter().take(8) {
-        let low = line.to_ascii_lowercase();
-        for pref in ["vendor:", "merchant:", "seller:", "billed by:", "supplier:", "company:"] {
+    // 1. Explicit label on any line: "Vendor: ...", "Merchant: ...", "Seller: ...", "दुकान:", "विक्रेता:"
+    for line in lines.iter().take(10) {
+        let low = line.to_lowercase();
+        for pref in [
+            "vendor:", "merchant:", "seller:", "billed by:", "supplier:", "company:",
+            "दुकान:", "विक्रेता:", "दुकान :", "विक्रेता :", "account name:"
+        ] {
             if let Some(pos) = low.find(pref) {
                 let val = line[pos + pref.len()..].trim();
-                if val.len() >= 2 {
-                    return Some(val.to_string());
+                let clean = val.trim_matches([':', ' ', '-', '#', '(']);
+                if clean.len() >= 2 {
+                    return Some(clean.to_string());
                 }
             }
         }
     }
 
-    // 2. Top header lines (first 2 lines): require positive business-entity evidence and
+    // 2. Top header lines (first 6 lines): require positive business-entity evidence and
     //    reject generic page/document headers like "Scanned page", "Smoke Test", "INVOICE", etc.
     const GENERIC_BANNED: &[&str] = &[
-        "scanned", "page", "smoke", "test", "sample", "document", "invoice", "receipt", "total",
-        "amount", "balance", "due", "date", "bill", "summary", "report", "table", "form",
-        "letter", "copy", "draft", "original", "customer", "client", "item", "qty", "price",
+        "scanned", "page", "smoke", "test", "sample", "document", "total",
+        "amount", "balance", "due", "date", "summary", "report", "table", "form",
+        "letter", "copy", "draft", "original tax", "customer", "client", "item", "qty", "price",
         "tax ", "gstin", "quote", "estimate", "memo", "notice",
     ];
     const BUSINESS_MARKERS: &[&str] = &[
@@ -422,19 +471,24 @@ fn extract_vendor_header(lines: &[&str]) -> Option<String> {
         "solutions", "technologies", "tech", "systems", "services", "traders", "trading",
         "store", "mart", "shop", "cafe", "restaurant", "hotel", "kitchen", "bistro", "pharmacy",
         "clinic", "hospital", "labs", "motors", "logistics", "agency", "studio", "associates",
-        "group", "industries", "electronics", "foods", "retail", "bazaar", "udyog", "लिमिटेड",
-        "प्राइवेट", "स्टोर", "होटल",
+        "group", "industries", "electronics", "foods", "retail", "bazaar", "udyog", "bank",
+        "chemist", "supermarket", "decor", "lifesciences", "carriers", "networks", "powertech",
+        "skyline", "hardware", "लिमिटेड", "प्राइवेट", "स्टोर", "होटल", "बैंक",
     ];
 
-    for candidate in lines.iter().take(2) {
+    for candidate in lines.iter().take(6) {
         let trimmed = candidate.trim();
         let low = trimmed.to_lowercase();
-        if GENERIC_BANNED.iter().any(|b| low.contains(b)) {
+        if trimmed == "TAX INVOICE" || trimmed == "INVOICE" || trimmed == "RECEIPT" {
+            continue;
+        }
+        if GENERIC_BANNED.iter().any(|b| low.starts_with(b)) {
             continue;
         }
         let has_marker = BUSINESS_MARKERS.iter().any(|m| low.contains(m));
         if has_marker && trimmed.len() >= 3 && trimmed.len() <= 72 {
-            return Some(trimmed.to_string());
+            let clean = trimmed.trim_start_matches("Vendor:").trim_start_matches("Merchant:").trim();
+            return Some(clean.to_string());
         }
     }
     None

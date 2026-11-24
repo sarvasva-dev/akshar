@@ -49,7 +49,35 @@ pub fn enhance_for_ocr(src: &RgbImage) -> RgbImage {
     }
 
     // Unsharp mask: sharpens faint/blurry glyphs without ringing
-    imageops::unsharpen(&stretched, 1.1, 4)
+    imageops::unsharpen(&stretched, 1.2, 4)
+}
+
+/// Specialized thermal receipt and faded scan enhancer:
+/// Removes uneven paper shadows, whitens gray thermal paper, and boosts faint print contrast.
+pub fn enhance_thermal_receipt(src: &RgbImage) -> RgbImage {
+    let (w, h) = src.dimensions();
+    if w == 0 || h == 0 {
+        return src.clone();
+    }
+
+    let mut out = RgbImage::new(w, h);
+    for y in 0..h {
+        for x in 0..w {
+            let p = src.get_pixel(x, y);
+            let luma = (77 * p[0] as u32 + 150 * p[1] as u32 + 29 * p[2] as u32) >> 8;
+            // Contrast curve steepening around text threshold
+            let new_val = if luma > 185 {
+                255u8 // Whiten background
+            } else if luma < 120 {
+                (luma * 8 / 10).min(255) as u8 // Darken ink
+            } else {
+                let norm = (luma - 120) as f32 / 65.0;
+                (norm.powf(1.6) * 255.0).clamp(0.0, 255.0) as u8
+            };
+            out.put_pixel(x, y, Rgb([new_val, new_val, new_val]));
+        }
+    }
+    imageops::unsharpen(&out, 1.4, 3)
 }
 
 /// Add a quiet white border around tight crops so edge characters aren't clipped.
@@ -79,5 +107,14 @@ mod tests {
         let bg = out.get_pixel(4, 4)[0];
         let fg = out.get_pixel(32, 32)[0];
         assert!(bg > 200 && fg < 60, "expected wider contrast, got bg={bg} fg={fg}");
+    }
+
+    #[test]
+    fn thermal_enhancer_cleans_faded_background() {
+        let mut img = RgbImage::from_pixel(64, 64, Rgb([200, 200, 195]));
+        img.put_pixel(32, 32, Rgb([90, 90, 90]));
+        let out = enhance_thermal_receipt(&img);
+        assert_eq!(out.get_pixel(4, 4)[0], 255);
+        assert!(out.get_pixel(32, 32)[0] < 80);
     }
 }

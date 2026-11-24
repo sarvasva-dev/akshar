@@ -16,6 +16,7 @@ use crate::extract::{
     extract_grounded_form, extract_intelligence, normalize_ocr_line, repair_indian_currency_lines,
     sanitize_model_form_field,
 };
+use crate::handwriting::detect_visual_artifacts;
 use crate::pdf::{
     extract_native_pdf_pages, is_pdf_bytes, is_pdf_path, render_single_pdf_page,
 };
@@ -24,6 +25,7 @@ use crate::redact::{RedactStyle, RedactionSummary, redact_image};
 use crate::table::{extract_tables_from_lines, extract_tables_from_words};
 use crate::tiling::{OCRLine, deduplicate_lines, run_tiled_ocr};
 use crate::tsv::run_fast_document_ocr;
+use crate::validate::{validate_bank_statement_arithmetic, validate_invoice_arithmetic};
 
 const VISION_BIT: c_int = 4;
 const OUT_BUFFER_CAPACITY: usize = 16 * 1024 * 1024;
@@ -381,6 +383,23 @@ impl OCREngine {
             extract_tables_from_lines(&lines)
         };
         let classification = classify_page(&text, &lines, &tables, false);
+        let artifacts = detect_visual_artifacts(rgb, &lines);
+        let mut needs_review = false;
+        let mut review_reasons = Vec::new();
+
+        if artifacts.has_handwriting {
+            needs_review = true;
+            review_reasons.push("handwriting_detected: document contains cursive handwriting or signature that may require human review".to_string());
+        }
+        if !artifacts.faded_regions.is_empty() {
+            needs_review = true;
+            review_reasons.push("faded_regions_detected: ink physically degraded or occluded below threshold".to_string());
+        }
+        if tables.iter().any(|t| t.table_uncertain) {
+            needs_review = true;
+            review_reasons.push("table_uncertain: table grid could not be reconstructed with high geometric confidence".to_string());
+        }
+
         let (width, height) = rgb.dimensions();
 
         Ok(json!({
@@ -389,6 +408,10 @@ impl OCREngine {
             "tables": tables,
             "classification": classification,
             "entities": entities,
+            "artifacts": artifacts,
+            "checkboxes": artifacts.checkboxes,
+            "needs_review": needs_review,
+            "review_reasons": review_reasons,
             "meta": {
                 "width": width,
                 "height": height,
@@ -487,11 +510,57 @@ impl OCREngine {
         }
 
         let (width, height) = rgb.dimensions();
+        let artifacts = detect_visual_artifacts(rgb, &lines);
+        let mut needs_review = false;
+        let mut review_reasons = Vec::new();
+
+        if artifacts.has_handwriting {
+            needs_review = true;
+            review_reasons.push("handwriting_detected: document contains cursive handwriting or signature that may require human review".to_string());
+        }
+        if !artifacts.faded_regions.is_empty() {
+            needs_review = true;
+            review_reasons.push("faded_regions_detected: ink physically degraded or occluded below threshold".to_string());
+        }
+        if tables.iter().any(|t| t.table_uncertain) {
+            needs_review = true;
+            review_reasons.push("table_uncertain: table grid could not be reconstructed with high geometric confidence".to_string());
+        }
+
+        let page_type = classification.document_type.as_str();
+        let is_indian = text.contains('₹') || text.to_uppercase().contains("GST") || text.to_uppercase().contains("INR");
+
+        let validation = if page_type == "bank_statement" {
+            let v = validate_bank_statement_arithmetic(&tables, is_indian);
+            if v.needs_review {
+                needs_review = true;
+                review_reasons.extend(v.review_reasons.clone());
+            }
+            Some(v)
+        } else if page_type == "invoice" || page_type == "receipt" || schema_obj.contains_key("total_amount") || schema_obj.contains_key("total") {
+            let subtotal_str = grounded.get("subtotal").and_then(|v| v.get("value")).and_then(|v| v.as_str());
+            let tax_str = grounded.get("tax").or_else(|| grounded.get("tax_amount")).and_then(|v| v.get("value")).and_then(|v| v.as_str());
+            let total_str = grounded.get("total_amount").or_else(|| grounded.get("total")).and_then(|v| v.get("value")).and_then(|v| v.as_str());
+            let v = validate_invoice_arithmetic(&lines, &tables, subtotal_str, tax_str, total_str, is_indian);
+            if v.needs_review {
+                needs_review = true;
+                review_reasons.extend(v.review_reasons.clone());
+            }
+            Some(v)
+        } else {
+            None
+        };
+
         Ok(json!({
             "fields": { "form": grounded },
             "classification": classification,
             "text": text,
             "lines": lines,
+            "artifacts": artifacts,
+            "checkboxes": artifacts.checkboxes,
+            "validation": validation,
+            "needs_review": needs_review,
+            "review_reasons": review_reasons,
             "meta": {
                 "width": width,
                 "height": height,
@@ -563,6 +632,17 @@ impl OCREngine {
             .join("\n");
         let tables = extract_tables_from_lines(&text_lines);
         let classification = classify_page(&text, &text_lines, &tables, !objects.is_empty());
+        let artifacts = detect_visual_artifacts(rgb, &text_lines);
+        let mut needs_review = false;
+        let mut review_reasons = Vec::new();
+        if artifacts.has_handwriting {
+            needs_review = true;
+            review_reasons.push("handwriting_detected: document contains cursive handwriting or signature".to_string());
+        }
+        if !artifacts.faded_regions.is_empty() {
+            needs_review = true;
+            review_reasons.push("faded_regions_detected: ink physically degraded or occluded below threshold".to_string());
+        }
 
         Ok(json!({
             "scene": raw.get("scene").cloned().unwrap_or_else(|| Value::Object(Map::new())),
@@ -571,6 +651,10 @@ impl OCREngine {
             "lines": text_lines,
             "tables": tables,
             "classification": classification,
+            "artifacts": artifacts,
+            "checkboxes": artifacts.checkboxes,
+            "needs_review": needs_review,
+            "review_reasons": review_reasons,
             "relations": raw.get("relations").cloned().unwrap_or_else(|| Value::Array(vec![])),
             "meta": {
                 "width": width,
@@ -802,12 +886,30 @@ impl OCREngine {
             format!("pdf_{}", opts.mode)
         };
 
+        let pdf_needs_review = page_results
+            .iter()
+            .any(|p| p.get("needs_review").and_then(|v| v.as_bool()).unwrap_or(false));
+        let mut pdf_review_reasons = Vec::new();
+        for p in &page_results {
+            if let Some(arr) = p.get("review_reasons").and_then(|v| v.as_array()) {
+                for r in arr {
+                    if let Some(s) = r.as_str() {
+                        if !pdf_review_reasons.iter().any(|existing: &String| existing == s) {
+                            pdf_review_reasons.push(s.to_string());
+                        }
+                    }
+                }
+            }
+        }
+
         Ok(json!({
             "text": combined_text,
             "pages": page_results,
             "lines": first_lines,
             "tables": all_tables,
             "classification": first_class,
+            "needs_review": pdf_needs_review,
+            "review_reasons": pdf_review_reasons,
             "meta": {
                 "is_pdf": true,
                 "page_count": page_results.len(),

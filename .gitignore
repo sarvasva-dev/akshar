@@ -3,5 +3,5 @@ assets/engine/
 assets/models/
 assets/tessdata/
 automation/
-data/
+/data/
 .directory

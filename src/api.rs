@@ -66,6 +66,8 @@ pub fn build_router_with_index(engine: OCREngine, index: Option<SearchIndex>) ->
         .route(&format!("{prefix}/batch"), post(batch_endpoint))
         .route(&format!("{prefix}/search"), get(search_endpoint))
         .route(&format!("{prefix}/search/{{id}}"), delete(delete_search_doc))
+        .route(&format!("{prefix}/review"), get(review_queue_endpoint))
+        .route(&format!("{prefix}/review/{{id}}"), delete(resolve_review_endpoint))
         .route(&format!("{prefix}/automation/status"), get(automation_status))
         .route(&format!("{prefix}/automation/start"), post(automation_start))
         .route(&format!("{prefix}/automation/stop"), post(automation_stop))
@@ -196,6 +198,18 @@ fn index_result(index: &Option<SearchIndex>, filename: &str, res: &Value) {
         if !names.is_empty() {
             let _ = idx.insert(filename, "", route, 0, &format!("Objects: {names}"));
         }
+    }
+
+    if res["needs_review"].as_bool().unwrap_or(false) {
+        let reasons: Vec<String> = res["review_reasons"]
+            .as_array()
+            .map(|arr| {
+                arr.iter()
+                    .filter_map(|v| v.as_str().map(String::from))
+                    .collect()
+            })
+            .unwrap_or_default();
+        let _ = idx.add_review_item(filename, &reasons, res);
     }
 }
 
@@ -493,6 +507,44 @@ async fn delete_search_doc(
         .delete(id)
         .map_err(|e| api_err(StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
     Ok(Json(json!({ "deleted": deleted })))
+}
+
+#[derive(Deserialize)]
+struct ReviewParams {
+    #[serde(default = "default_review_limit")]
+    limit: usize,
+}
+fn default_review_limit() -> usize {
+    50
+}
+
+async fn review_queue_endpoint(
+    State(st): State<Arc<AppState>>,
+    Query(params): Query<ReviewParams>,
+) -> ApiResult {
+    let Some(idx) = &st.index else {
+        return Ok(Json(json!({ "count": 0, "items": [] })));
+    };
+    let items = idx
+        .list_review_items(params.limit)
+        .map_err(|e| api_err(StatusCode::INTERNAL_SERVER_ERROR, format!("review error: {e}")))?;
+    Ok(Json(json!({
+        "count": items.len(),
+        "items": items
+    })))
+}
+
+async fn resolve_review_endpoint(
+    State(st): State<Arc<AppState>>,
+    AxumPath(id): AxumPath<i64>,
+) -> ApiResult {
+    let Some(idx) = &st.index else {
+        return Err(api_err(StatusCode::SERVICE_UNAVAILABLE, "search index disabled"));
+    };
+    let resolved = idx
+        .resolve_review_item(id)
+        .map_err(|e| api_err(StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    Ok(Json(json!({ "resolved": resolved })))
 }
 
 async fn automation_status(State(st): State<Arc<AppState>>) -> Json<Value> {

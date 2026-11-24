@@ -22,6 +22,8 @@ pub struct ExtractedTable {
     pub rows: Vec<Vec<String>>,
     pub cells: Vec<TableCell>,
     pub markdown: String,
+    #[serde(default)]
+    pub table_uncertain: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -255,11 +257,13 @@ fn build_tables_from_cell_rows(cell_rows: &[Vec<Segment>]) -> Vec<ExtractedTable
             md.push(esc(r));
         }
 
+        let uncertain = num_cols < 2 || data_rows.is_empty();
         tables.push(ExtractedTable {
             headers,
             rows: data_rows,
             cells,
             markdown: md.join("\n"),
+            table_uncertain: uncertain,
         });
     }
     tables

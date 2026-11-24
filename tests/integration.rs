@@ -430,3 +430,199 @@ async fn test_axum_http_endpoints() {
         .unwrap();
     assert_eq!(r_stop.status(), StatusCode::OK);
 }
+
+#[tokio::test]
+async fn test_airplane_mode_offline_guarantee() {
+    let engine = OCREngine::new(None, None, None).unwrap();
+    let img_bytes = png_from_lines(
+        &["CONFIDENTIAL MEDICAL REPORT", "Patient ID: 98124", "Condition: Stable"],
+        500,
+        300,
+        18,
+        36,
+    );
+    let res = engine
+        .smart_process_bytes(&img_bytes, Some("confidential.png"), &SmartOptions::default())
+        .expect("offline ocr");
+    let text = res["text"].as_str().unwrap();
+    assert!(text.contains("CONFIDENTIAL"));
+    assert!(text.contains("98124"));
+}
+
+#[tokio::test]
+async fn test_arithmetic_reconciliation_and_review_queue() {
+    use akshar::table::ExtractedTable;
+    use akshar::validate::{DecimalAmount, validate_bank_statement_arithmetic, validate_invoice_arithmetic};
+
+    let engine = OCREngine::new(None, None, None).unwrap();
+    let idx_dir = TempDir::new().unwrap();
+    let idx = SearchIndex::open(&idx_dir.path().join("rev_test.db")).unwrap();
+
+    // 1. DecimalAmount look-alike hardening & locale detection
+    let (d1, _rep1) = DecimalAmount::parse("Rs. 1,234.56", true).unwrap();
+    assert_eq!(d1.cents, 123456);
+    assert_eq!(d1.currency, "₹");
+    assert_eq!(d1.locale, "US_IN");
+
+    let (d2, _rep2) = DecimalAmount::parse("1.234,50 €", false).unwrap();
+    assert_eq!(d2.cents, 123450);
+    assert_eq!(d2.locale, "EU");
+
+    // Look-alike 'O' and 'l' inside amount
+    let (d3, rep3) = DecimalAmount::parse("Total: ₹ 1,O5l.00", true).unwrap();
+    assert_eq!(d3.cents, 105100);
+    assert!(!rep3.is_empty());
+
+    // 2. Invoice arithmetic validation: subtotal 1000 + tax 180 != total 1500 (mismatch!)
+    let val_mismatch = validate_invoice_arithmetic(
+        &[],
+        &[],
+        Some("₹ 1,000.00"),
+        Some("₹ 180.00"),
+        Some("₹ 1,500.00"),
+        true,
+    );
+    assert!(!val_mismatch.reconciled);
+    assert!(val_mismatch.needs_review);
+    assert!(val_mismatch.review_reasons[0].contains("arithmetic_mismatch"));
+
+    // 3. Bank statement validation
+    let bank_table = ExtractedTable {
+        headers: vec!["Date".into(), "Description".into(), "Debit".into(), "Credit".into(), "Balance".into()],
+        rows: vec![
+            vec!["01/01/2026".into(), "OPENING BALANCE".into(), "".into(), "".into(), "10,000.00".into()],
+            vec!["05/01/2026".into(), "Salary".into(), "".into(), "5,000.00".into(), "15,000.00".into()],
+            vec!["10/01/2026".into(), "Rent".into(), "3,000.00".into(), "".into(), "12,000.00".into()],
+        ],
+        cells: vec![],
+        markdown: String::new(),
+        table_uncertain: false,
+    };
+    let val_bank = validate_bank_statement_arithmetic(&[bank_table], true);
+    assert!(val_bank.reconciled);
+    assert!(!val_bank.needs_review);
+
+    // 4. API /v1/review endpoint
+    let app = build_router_with_index(engine.clone(), Some(idx.clone()));
+    let review_id = idx
+        .add_review_item(
+            "flagged_invoice.png",
+            &["arithmetic_mismatch: 1000 + 180 != 1500".into()],
+            &json!({"needs_review": true}),
+        )
+        .unwrap();
+
+    let r_list = app
+        .clone()
+        .oneshot(Request::builder().uri("/v1/review").body(Body::empty()).unwrap())
+        .await
+        .unwrap();
+    assert_eq!(r_list.status(), StatusCode::OK);
+    let list_json: Value = serde_json::from_slice(&r_list.into_body().collect().await.unwrap().to_bytes()).unwrap();
+    assert_eq!(list_json["count"], 1);
+
+    let r_del = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("DELETE")
+                .uri(&format!("/v1/review/{review_id}"))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(r_del.status(), StatusCode::OK);
+    let items_after = idx.list_review_items(10).unwrap();
+    assert_eq!(items_after.len(), 0);
+}
+
+#[tokio::test]
+async fn test_handwriting_and_checkbox_detection() {
+    use akshar::handwriting::detect_visual_artifacts;
+    use akshar::tiling::OCRLine;
+
+    let dummy_img = RgbImage::new(400, 200);
+    let lines = vec![
+        OCRLine {
+            text: "[X] Express Delivery Required".into(),
+            confidence: 0.95,
+            bbox: [10, 20, 250, 40],
+            bbox_norm: [25, 100, 625, 200],
+        },
+        OCRLine {
+            text: "[ ] Gift Wrap Included".into(),
+            confidence: 0.95,
+            bbox: [10, 50, 250, 70],
+            bbox_norm: [25, 250, 625, 350],
+        },
+        OCRLine {
+            text: "Authorized Signature: John Doe".into(),
+            confidence: 0.85,
+            bbox: [10, 90, 280, 110],
+            bbox_norm: [25, 450, 700, 550],
+        },
+    ];
+
+    let artifacts = detect_visual_artifacts(&dummy_img, &lines);
+    assert_eq!(artifacts.checkboxes.len(), 2);
+    assert_eq!(artifacts.checkboxes[0].label, "Express Delivery Required");
+    assert!(artifacts.checkboxes[0].checked);
+    assert_eq!(artifacts.checkboxes[1].label, "Gift Wrap Included");
+    assert!(!artifacts.checkboxes[1].checked);
+}
+
+#[tokio::test]
+async fn test_multi_column_reading_order() {
+    use akshar::tiling::{OCRLine, sort_reading_order};
+
+    // Simulate 2 columns:
+    // Left column (x: 50..250): Line 1 at y=100, Line 2 at y=150
+    // Right column (x: 350..550): Line 3 at y=100, Line 4 at y=150
+    let lines = vec![
+        OCRLine { text: "Col 2 Line 1".into(), confidence: 0.9, bbox: [350, 100, 550, 120], bbox_norm: [350, 100, 550, 120] },
+        OCRLine { text: "Col 1 Line 1".into(), confidence: 0.9, bbox: [50, 100, 250, 120], bbox_norm: [50, 100, 250, 120] },
+        OCRLine { text: "Col 2 Line 2".into(), confidence: 0.9, bbox: [350, 150, 550, 170], bbox_norm: [350, 150, 550, 170] },
+        OCRLine { text: "Col 1 Line 2".into(), confidence: 0.9, bbox: [50, 150, 250, 170], bbox_norm: [50, 150, 250, 170] },
+    ];
+
+    let sorted = sort_reading_order(lines);
+    // Gutter detection separates left column from right column
+    assert_eq!(sorted[0].text, "Col 1 Line 1");
+    assert_eq!(sorted[1].text, "Col 1 Line 2");
+    assert_eq!(sorted[2].text, "Col 2 Line 1");
+    assert_eq!(sorted[3].text, "Col 2 Line 2");
+}
+
+#[tokio::test]
+async fn test_resumable_batch_queue() {
+    use akshar::batch::BatchQueue;
+    use std::sync::atomic::AtomicBool;
+
+    let td = TempDir::new().unwrap();
+    let db_path = td.path().join("batch.db");
+    let queue = BatchQueue::open(Some(&db_path)).unwrap();
+
+    let f1 = td.path().join("doc1.png");
+    let f2 = td.path().join("doc2.png");
+    let f3 = td.path().join("doc3.png");
+    std::fs::write(&f1, b"fake").unwrap();
+    std::fs::write(&f2, b"fake").unwrap();
+    std::fs::write(&f3, b"fake").unwrap();
+
+    let enqueued = queue.enqueue_files(&[f1.clone(), f2.clone(), f3.clone()]).unwrap();
+    assert_eq!(enqueued, 3);
+
+    let stats0 = queue.stats().unwrap();
+    assert_eq!(stats0["total"], 3);
+    assert_eq!(stats0["pending"], 3);
+
+    // Test cancel_token stops processing prematurely
+    let cancel = Arc::new(AtomicBool::new(true));
+    let engine = OCREngine::new(None, None, None).unwrap();
+    let (processed, _) = queue.process_all(&engine, &SmartOptions::default(), cancel, |_, _, _| {}).unwrap();
+    assert_eq!(processed, 0);
+
+    let stats_interrupted = queue.stats().unwrap();
+    assert_eq!(stats_interrupted["pending"], 3);
+}

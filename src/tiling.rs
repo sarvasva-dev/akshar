@@ -136,6 +136,77 @@ fn prefer_candidate(candidate: &OCRLine, existing: &OCRLine) -> bool {
 }
 
 pub fn sort_reading_order(mut lines: Vec<OCRLine>) -> Vec<OCRLine> {
+    if lines.len() <= 2 {
+        lines.sort_by_key(|l| (l.bbox[1], l.bbox[0]));
+        return lines;
+    }
+
+    // 1. Check for multi-column layout with a vertical gutter
+    let min_x = lines.iter().map(|l| l.bbox[0]).min().unwrap_or(0);
+    let max_x = lines.iter().map(|l| l.bbox[2]).max().unwrap_or(1);
+    let page_w = (max_x - min_x).max(1);
+
+    if page_w > 300 && lines.len() >= 4 {
+        // Test gutter candidate around the middle (42% .. 58% of page width)
+        let gutter_left = min_x + (page_w * 42 / 100);
+        let gutter_right = min_x + (page_w * 58 / 100);
+
+        let mut left_col = Vec::new();
+        let mut right_col = Vec::new();
+        let mut spanning_lines = Vec::new();
+
+        for ln in &lines {
+            let cx = (ln.bbox[0] + ln.bbox[2]) / 2;
+            let spans = ln.bbox[0] < gutter_left && ln.bbox[2] > gutter_right;
+
+            if spans {
+                spanning_lines.push(ln.clone());
+            } else if cx < gutter_left {
+                left_col.push(ln.clone());
+            } else if cx > gutter_right {
+                right_col.push(ln.clone());
+            } else {
+                spanning_lines.push(ln.clone());
+            }
+        }
+
+        // If both left and right columns have at least 2 lines, and spanning lines are near the top/bottom
+        if left_col.len() >= 2 && right_col.len() >= 2 && spanning_lines.len() <= lines.len() / 2 {
+            let col_top = left_col.iter().chain(right_col.iter()).map(|l| l.bbox[1]).min().unwrap_or(0);
+            let col_bottom = left_col.iter().chain(right_col.iter()).map(|l| l.bbox[3]).max().unwrap_or(i32::MAX);
+
+            let mut top_headers = Vec::new();
+            let mut bottom_footers = Vec::new();
+
+            for sp in spanning_lines {
+                if sp.bbox[3] <= col_top + 15 {
+                    top_headers.push(sp);
+                } else if sp.bbox[1] >= col_bottom - 15 {
+                    bottom_footers.push(sp);
+                } else {
+                    // Placed into closer column
+                    let cx = (sp.bbox[0] + sp.bbox[2]) / 2;
+                    if cx < min_x + page_w / 2 {
+                        left_col.push(sp);
+                    } else {
+                        right_col.push(sp);
+                    }
+                }
+            }
+
+            let mut result = Vec::with_capacity(lines.len());
+            result.extend(sort_single_column_rows(top_headers));
+            result.extend(sort_single_column_rows(left_col));
+            result.extend(sort_single_column_rows(right_col));
+            result.extend(sort_single_column_rows(bottom_footers));
+            return result;
+        }
+    }
+
+    sort_single_column_rows(lines)
+}
+
+fn sort_single_column_rows(mut lines: Vec<OCRLine>) -> Vec<OCRLine> {
     if lines.is_empty() {
         return lines;
     }

@@ -1,9 +1,11 @@
 pub mod api;
 pub mod automation;
+pub mod batch;
 pub mod classify;
 pub mod config;
 pub mod engine;
 pub mod extract;
+pub mod handwriting;
 pub mod index;
 pub mod pdf;
 pub mod preprocess;
@@ -11,6 +13,7 @@ pub mod redact;
 pub mod table;
 pub mod tiling;
 pub mod tsv;
+pub mod validate;
 
 pub use automation::{FolderWatcher, WatcherConfig};
 pub use classify::{PageClassification, classify_page};
