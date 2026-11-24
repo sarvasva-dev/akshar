@@ -1,0 +1,22 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Check setup script syntax
+        run: sh -n scripts/setup.sh
+      - name: Check compilation
+        run: cargo check --all-targets
+      - name: Run unit tests
+        run: cargo test --lib
+      - name: Build release binary
+        run: cargo build --release

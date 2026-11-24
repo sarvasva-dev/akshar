@@ -1,0 +1,7 @@
+{
+  "name": "Akshar",
+  "subtitle": "Extract text from images and PDFs",
+  "version": "1.0.0",
+  "accent": "#2563eb",
+  "api_prefix": "/v1"
+}

@@ -1,0 +1,31 @@
+[package]
+name = "akshar"
+version = "1.0.0"
+edition = "2024"
+description = "Local OCR, PDF text extraction, and folder watcher"
+
+[lib]
+name = "akshar"
+path = "src/lib.rs"
+
+[[bin]]
+name = "akshar"
+path = "src/main.rs"
+
+[dependencies]
+anyhow = "1"
+axum = { version = "0.8", features = ["multipart"] }
+chrono = { version = "0.4", features = ["clock"] }
+clap = { version = "4", features = ["derive"] }
+image = { version = "0.25", default-features = false, features = ["png", "jpeg", "webp", "bmp", "tiff"] }
+libloading = "0.8"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tempfile = "3"
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "signal", "fs", "sync", "time"] }
+tower-http = { version = "0.6", features = ["cors"] }
+ureq = { version = "2", default-features = false, features = ["tls"] }
+
+[dev-dependencies]
+http-body-util = "0.1"
+tower = { version = "0.5", features = ["util"] }
