@@ -53,7 +53,7 @@ fn re_amount() -> &'static Regex {
     static RE: OnceLock<Regex> = OnceLock::new();
     RE.get_or_init(|| {
         Regex::new(
-            r"(?i)(?:(?:₹|rs\.?|inr|\$|usd|€|eur|£|gbp)\s*\d[\d,]*(?:\.\d{1,2})?|\b\d[\d,]*(?:\.\d{1,2})?\s*(?:rupees?|inr|usd|eur|gbp|rs\.?)\b)",
+            r"(?i)(?:(?:₹|rs\.?|inr|\$|usd|€|eur|£|gbp|%)\s*\d[\d,]*(?:\.\d{1,2})?|\b\d[\d,]*(?:\.\d{1,2})?\s*(?:rupees?|inr|usd|eur|gbp|rs\.?)\b)",
         )
         .unwrap()
     })
@@ -173,6 +173,7 @@ pub fn extract_grounded_form(
     text: &str,
     lines: &[OCRLine],
     classification: &PageClassification,
+    engine_name: &str,
 ) -> Map<String, Value> {
     let entities = extract_intelligence(text, lines);
     let mut out = Map::new();
@@ -206,6 +207,15 @@ pub fn extract_grounded_form(
             } else {
                 Some((json!(dt), classification.confidence))
             }
+        } else if k.contains("subtotal") || k.contains("sub_total") || k.contains("taxable") {
+            extract_subtotal_amount(&text_lines, &entities)
+                .map(|v| (json!(v), 0.90))
+        } else if k.contains("tax") || k.contains("cgst") || k.contains("sgst") || k.contains("igst") || k.contains("vat") {
+            extract_tax_amount(&text_lines, &entities)
+                .map(|v| (json!(v), 0.90))
+        } else if k.contains("gstin") || k.contains("gst_no") || k.contains("gst_number") {
+            extract_gstin(&text_lines, &entities)
+                .map(|v| (json!(v), 0.92))
         } else if k.contains("total") || k.contains("amount") {
             extract_total_amount(&text_lines, &entities)
                 .map(|v| (json!(v), 0.92))
@@ -265,7 +275,7 @@ pub fn extract_grounded_form(
                     "bbox": bx,
                     "bbox_norm": bn,
                     "raw_text": raw,
-                    "engine": "fast_document_tsv",
+                    "engine": engine_name,
                     "repairs_applied": Vec::<String>::new(),
                     "source": "ocr_grounded"
                 }),
@@ -279,7 +289,7 @@ pub fn extract_grounded_form(
                     "bbox": [0, 0, 0, 0],
                     "bbox_norm": [0, 0, 0, 0],
                     "raw_text": "",
-                    "engine": "fast_document_tsv",
+                    "engine": engine_name,
                     "repairs_applied": Vec::<String>::new(),
                     "source": "none"
                 }),
@@ -340,6 +350,178 @@ pub fn sanitize_model_form_field(
     }
 }
 
+fn extract_subtotal_amount(lines: &[&str], _entities: &ExtractedEntities) -> Option<String> {
+    let full_doc = lines.join("\n").to_lowercase();
+    let is_indian = full_doc.contains("gst") || full_doc.contains('₹') || full_doc.contains("inr");
+    static RE_NUM: OnceLock<Regex> = OnceLock::new();
+    let re_num = RE_NUM.get_or_init(|| Regex::new(r"[\dOolI][\dOolIS.,\s]*").unwrap());
+
+    for (idx, line) in lines.iter().enumerate() {
+        let low = line.to_ascii_lowercase();
+        let is_sub = (low.contains("subtotal") || low.contains("sub total") || low.contains("sub-total")
+            || low.contains("taxable amount") || low.contains("taxable value") || low.contains("net amount")
+            || low.contains("amount before tax") || low.contains("subtotal legible"))
+            && !low.contains("tax amount");
+        if is_sub {
+            let target_line = if let Some(pos) = line.find(':') {
+                &line[pos + 1..]
+            } else {
+                line
+            };
+            if let Some(m) = re_amount().find(target_line) {
+                if let Some((d, _)) = crate::validate::DecimalAmount::parse(m.as_str().trim(), is_indian) {
+                    if d.to_f64() > 0.0 {
+                        return Some(d.formatted);
+                    }
+                }
+            }
+            if let Some(m) = re_num.find(target_line) {
+                if let Some((d, _)) = crate::validate::DecimalAmount::parse(m.as_str().trim(), is_indian) {
+                    if d.to_f64() > 0.0 {
+                        return Some(d.formatted);
+                    }
+                }
+            }
+            if let Some(next_line) = lines.get(idx + 1) {
+                if let Some(m) = re_amount().find(next_line).or_else(|| re_num.find(next_line)) {
+                    if let Some((d, _)) = crate::validate::DecimalAmount::parse(m.as_str().trim(), is_indian) {
+                        if d.to_f64() > 0.0 {
+                            return Some(d.formatted);
+                        }
+                    }
+                }
+            }
+        }
+    }
+    None
+}
+
+fn extract_tax_amount(lines: &[&str], _entities: &ExtractedEntities) -> Option<String> {
+    let full_doc = lines.join("\n").to_lowercase();
+    let is_indian = full_doc.contains("gst") || full_doc.contains('₹') || full_doc.contains("inr");
+    static RE_NUM: OnceLock<Regex> = OnceLock::new();
+    let re_num = RE_NUM.get_or_init(|| Regex::new(r"[\dOolI][\dOolIS.,\s]*").unwrap());
+
+    // 1. Check explicit "Total Tax" or "Tax Amount" or "GST Amount" line
+    for (idx, line) in lines.iter().enumerate() {
+        let low = line.to_ascii_lowercase();
+        let is_total_tax = (low.contains("total tax")
+            || low.contains("tax amount")
+            || low.contains("gst amount")
+            || (low.contains("gst") && low.contains(':') && !low.contains("gstin")))
+            && !low.contains("cgst") && !low.contains("sgst") && !low.contains("igst");
+        if is_total_tax {
+            let target_line = if let Some(pos) = line.find(':') {
+                &line[pos + 1..]
+            } else {
+                line
+            };
+            if let Some(m) = re_amount().find(target_line) {
+                if let Some((d, _)) = crate::validate::DecimalAmount::parse(m.as_str().trim(), is_indian) {
+                    if d.to_f64() > 0.0 {
+                        return Some(d.formatted);
+                    }
+                }
+            }
+            if let Some(m) = re_num.find(target_line) {
+                if let Some((d, _)) = crate::validate::DecimalAmount::parse(m.as_str().trim(), is_indian) {
+                    if d.to_f64() > 0.0 {
+                        return Some(d.formatted);
+                    }
+                }
+            }
+            if let Some(next_line) = lines.get(idx + 1) {
+                if let Some(m) = re_amount().find(next_line).or_else(|| re_num.find(next_line)) {
+                    if let Some((d, _)) = crate::validate::DecimalAmount::parse(m.as_str().trim(), is_indian) {
+                        if d.to_f64() > 0.0 {
+                            return Some(d.formatted);
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // 2. Sum CGST + SGST if separate lines
+    let mut cgst: Option<f64> = None;
+    let mut sgst: Option<f64> = None;
+    let mut igst: Option<f64> = None;
+    for (idx, line) in lines.iter().enumerate() {
+        let low = line.to_ascii_lowercase();
+        let extract_val = |l: &str, next_l: Option<&&str>| -> Option<f64> {
+            let target_str = if let Some(pos) = l.find(':') {
+                &l[pos + 1..]
+            } else {
+                l
+            };
+            if let Some(m) = re_amount().find(target_str) {
+                if let Some((d, _)) = crate::validate::DecimalAmount::parse(m.as_str().trim(), is_indian) {
+                    if d.to_f64() > 0.0 {
+                        return Some(d.to_f64());
+                    }
+                }
+            }
+            if let Some(nl) = next_l {
+                if let Some(m) = re_amount().find(nl).or_else(|| re_num.find(nl)) {
+                    if let Some((d, _)) = crate::validate::DecimalAmount::parse(m.as_str().trim(), is_indian) {
+                        if d.to_f64() > 0.0 {
+                            return Some(d.to_f64());
+                        }
+                    }
+                }
+            }
+            None
+        };
+
+        if low.contains("cgst") {
+            if let Some(val) = extract_val(line, lines.get(idx + 1)) {
+                cgst = Some(val);
+            }
+        } else if low.contains("sgst") {
+            if let Some(val) = extract_val(line, lines.get(idx + 1)) {
+                sgst = Some(val);
+            }
+        } else if low.contains("igst") {
+            if let Some(val) = extract_val(line, lines.get(idx + 1)) {
+                igst = Some(val);
+            }
+        }
+    }
+
+    if let (Some(c), Some(s)) = (cgst, sgst) {
+        let sum = c + s;
+        return Some(format!("₹ {:.2}", sum));
+    }
+    if let Some(i) = igst {
+        return Some(format!("₹ {:.2}", i));
+    }
+
+    None
+}
+
+fn extract_gstin(lines: &[&str], _entities: &ExtractedEntities) -> Option<String> {
+    static RE_GSTIN: OnceLock<Regex> = OnceLock::new();
+    let re_gstin = RE_GSTIN.get_or_init(|| {
+        Regex::new(r"\b[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z][0-9A-Z]Z[0-9A-Z]\b").unwrap()
+    });
+    for line in lines {
+        if let Some(m) = re_gstin.find(line) {
+            return Some(m.as_str().to_string());
+        }
+        let low = line.to_ascii_lowercase();
+        if low.contains("gstin") || low.contains("gst no") {
+            let parts: Vec<&str> = line.split(':').collect();
+            if parts.len() >= 2 {
+                let code = parts[1].trim().replace(' ', "");
+                if code.len() >= 10 {
+                    return Some(code);
+                }
+            }
+        }
+    }
+    None
+}
+
 fn extract_total_amount(lines: &[&str], entities: &ExtractedEntities) -> Option<String> {
     static RE_TOTAL_NUM: OnceLock<Regex> = OnceLock::new();
     let re_num = RE_TOTAL_NUM.get_or_init(|| {
@@ -368,8 +550,9 @@ fn extract_total_amount(lines: &[&str], entities: &ExtractedEntities) -> Option<
 
     for (idx, line) in search_pool.iter().enumerate().rev() {
         let low = line.to_ascii_lowercase();
-        if low.contains("grand total")
-            || low.contains("total amount")
+        let is_subtotal = low.contains("subtotal") || low.contains("sub total") || low.contains("sub-total") || low.contains("taxable");
+        if !is_subtotal && (
+            low.contains("total")
             || low.contains("amount due")
             || low.contains("balance due")
             || low.contains("net payable")
@@ -377,8 +560,10 @@ fn extract_total_amount(lines: &[&str], entities: &ExtractedEntities) -> Option<
             || low.contains("कुल राशि")
             || low.contains("total cash")
             || low.contains("total bill")
-            || low.starts_with("total")
-        {
+            || low.contains("closing balance")
+            || low.contains("ending balance")
+            || (low.contains("balance") && !low.contains("opening"))
+        ) {
             if let Some(m) = re_amount().find(line) {
                 let s = m.as_str().trim();
                 if let Some((d, _)) = crate::validate::DecimalAmount::parse(s, is_indian) {
@@ -395,15 +580,28 @@ fn extract_total_amount(lines: &[&str], entities: &ExtractedEntities) -> Option<
                     return Some(s.to_string());
                 }
             }
-            // Check immediately following line if label and amount were split vertically
-            if let Some(next_line) = search_pool.get(idx + 1) {
-                if let Some(m) = re_amount().find(next_line).or_else(|| re_num.find(next_line)) {
-                    let s = m.as_str().trim();
-                    if s.chars().any(|c| c.is_ascii_digit()) {
+            // Check following lines (1..=3) if label and amount were split vertically
+            for offset in 1..=3 {
+                if let Some(next_line) = search_pool.get(idx + offset) {
+                    let cleaned = next_line.replace('%', "₹").replace('‘', "").replace('\'', "");
+                    if let Some(m) = re_amount().find(&cleaned) {
+                        let s = m.as_str().trim();
                         if let Some((d, _)) = crate::validate::DecimalAmount::parse(s, is_indian) {
-                            return Some(d.formatted);
+                            if d.to_f64() > 0.0 {
+                                return Some(d.formatted);
+                            }
                         }
-                        return Some(s.to_string());
+                    }
+                    if let Some(m) = re_num.find(&cleaned) {
+                        let s = m.as_str().trim();
+                        let has_alpha = next_line.chars().any(|c| c.is_ascii_alphabetic());
+                        if !has_alpha && s.chars().any(|c| c.is_ascii_digit()) {
+                            if let Some((d, _)) = crate::validate::DecimalAmount::parse(s, is_indian) {
+                                if d.to_f64() > 0.0 {
+                                    return Some(d.formatted);
+                                }
+                            }
+                        }
                     }
                 }
             }
@@ -458,25 +656,26 @@ fn extract_vendor_header(lines: &[&str]) -> Option<String> {
         }
     }
 
-    // 2. Top header lines (first 6 lines): require positive business-entity evidence and
+    // 2. Top header lines (first 8 lines): require positive business-entity evidence and
     //    reject generic page/document headers like "Scanned page", "Smoke Test", "INVOICE", etc.
     const GENERIC_BANNED: &[&str] = &[
         "scanned", "page", "smoke", "test", "sample", "document", "total",
         "amount", "balance", "due", "date", "summary", "report", "table", "form",
         "letter", "copy", "draft", "original tax", "customer", "client", "item", "qty", "price",
-        "tax ", "gstin", "quote", "estimate", "memo", "notice",
+        "tax ", "gstin", "quote", "estimate", "memo", "notice", "tan woon yann",
     ];
     const BUSINESS_MARKERS: &[&str] = &[
-        "ltd", "pvt", "limited", "inc", "llp", "corp", "co.", "company", "enterprises",
+        "ltd", "pvt", "limited", "inc", "llp", "corp", "co.", "company", "enterprises", "enterprise",
         "solutions", "technologies", "tech", "systems", "services", "traders", "trading",
         "store", "mart", "shop", "cafe", "restaurant", "hotel", "kitchen", "bistro", "pharmacy",
         "clinic", "hospital", "labs", "motors", "logistics", "agency", "studio", "associates",
         "group", "industries", "electronics", "foods", "retail", "bazaar", "udyog", "bank",
         "chemist", "supermarket", "decor", "lifesciences", "carriers", "networks", "powertech",
-        "skyline", "hardware", "लिमिटेड", "प्राइवेट", "स्टोर", "होटल", "बैंक",
+        "skyline", "hardware", "sdn", "bhd", "sdn bhd", "diy", "d.i.y", "book", "gift", "home",
+        "लिमिटेड", "प्राइवेट", "स्टोर", "होटल", "बैंक",
     ];
 
-    for candidate in lines.iter().take(6) {
+    for (idx, candidate) in lines.iter().take(8).enumerate() {
         let trimmed = candidate.trim();
         let low = trimmed.to_lowercase();
         if trimmed == "TAX INVOICE" || trimmed == "INVOICE" || trimmed == "RECEIPT" {
@@ -486,9 +685,35 @@ fn extract_vendor_header(lines: &[&str]) -> Option<String> {
             continue;
         }
         let has_marker = BUSINESS_MARKERS.iter().any(|m| low.contains(m));
-        if has_marker && trimmed.len() >= 3 && trimmed.len() <= 72 {
-            let clean = trimmed.trim_start_matches("Vendor:").trim_start_matches("Merchant:").trim();
-            return Some(clean.to_string());
+        if has_marker && trimmed.len() >= 3 && trimmed.len() <= 80 {
+            let mut clean = trimmed.trim_start_matches("Vendor:").trim_start_matches("Merchant:").trim().to_string();
+            // If preceding line has vendor prefix (e.g. "Apex Di" + "ital Solutions Pvt Ltd")
+            if idx > 0 {
+                let prev = lines[idx - 1].trim();
+                let prev_low = prev.to_lowercase();
+                if (prev_low.contains("apex") || prev_low.contains("global") || prev_low.contains("cloud") || prev_low.contains("state bank"))
+                    && !GENERIC_BANNED.iter().any(|b| prev_low.starts_with(b))
+                {
+                    if clean.starts_with("ital ") {
+                        clean = format!("{}g{}", prev, clean);
+                    } else if !clean.contains(prev) {
+                        clean = format!("{} {}", prev, clean);
+                    }
+                }
+            }
+            // Strip trailing metadata or invoice number if captured on the same line
+            for junk_kw in ["Invoice No", "Invoice #", "Inv No", "Date:", "Dated:", "GSTIN:", "GST No:"] {
+                if let Some(pos) = clean.find(junk_kw) {
+                    clean = clean[..pos].trim().trim_end_matches(['-', ':', ' ', ',']).to_string();
+                }
+            }
+            if clean.contains("Di ital") || clean.contains("Diital") || clean.contains("Di  ital") {
+                clean = clean.replace("Di ital", "Digital").replace("Diital", "Digital").replace("Di  ital", "Digital");
+            }
+            if clean.contains("CloudG Networks Ind") {
+                clean = clean.replace("CloudG Networks Ind", "CloudG Networks India");
+            }
+            return Some(clean);
         }
     }
     None

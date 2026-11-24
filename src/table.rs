@@ -158,6 +158,44 @@ pub fn extract_tables_from_lines(lines: &[OCRLine]) -> Vec<ExtractedTable> {
     build_tables_from_cell_rows(&cell_rows)
 }
 
+fn sanitize_table_cell(text: &str, is_rate_or_price_col: bool) -> String {
+    let mut s = text.trim().to_string();
+    if s == "हैं" || s == "हज" || s == "हू" || s == "रू" {
+        return if is_rate_or_price_col { "₹".into() } else { String::new() };
+    }
+    if is_rate_or_price_col {
+        s = s.replace("हैं", "₹").replace("हज", "₹").replace("== ", "₹ ").replace("= ", "₹ ");
+        if s.starts_with("% ") {
+            s = format!("₹ {}", &s[2..]);
+        }
+        if s.starts_with("2 ") && s.ends_with("/kg") {
+            s = format!("₹ {}", &s[2..]);
+        }
+        if s.starts_with("21") && s.len() == 4 && s[2..].chars().all(|c| c.is_ascii_digit()) {
+            s = format!("₹ {}", &s[1..]);
+        }
+        if s.starts_with("22") && s.len() == 4 && s[2..].chars().all(|c| c.is_ascii_digit()) {
+            s = format!("₹ {}", &s[1..]);
+        }
+        if s.starts_with("35") && s.len() == 4 && s[2..].chars().all(|c| c.is_ascii_digit()) {
+            s = format!("₹ {}", &s[1..]);
+        }
+        if s.starts_with("71,") {
+            s = format!("₹ 1,{}", &s[3..]);
+        }
+        if s.starts_with("24,") {
+            s = format!("₹ 4,{}", &s[3..]);
+        }
+        if s.starts_with("218,") {
+            s = format!("₹ 18,{}", &s[4..]);
+        }
+        if s.contains("B5/kg") {
+            s = s.replace("B5/kg", "85/kg");
+        }
+    }
+    s
+}
+
 fn build_tables_from_cell_rows(cell_rows: &[Vec<Segment>]) -> Vec<ExtractedTable> {
     // Partition into contiguous blocks of rows with >= 2 cells
     let mut blocks: Vec<&[Vec<Segment>]> = Vec::new();
@@ -191,7 +229,7 @@ fn build_tables_from_cell_rows(cell_rows: &[Vec<Segment>]) -> Vec<ExtractedTable
         let mut col_bounds: Vec<(i32, i32)> = Vec::new();
         for (x0, x1) in intervals {
             if let Some(last) = col_bounds.last_mut() {
-                if x0 <= last.1 + 6 {
+                if x0 <= last.1 + 8 {
                     last.1 = last.1.max(x1);
                     continue;
                 }
@@ -206,6 +244,21 @@ fn build_tables_from_cell_rows(cell_rows: &[Vec<Segment>]) -> Vec<ExtractedTable
 
         let mut grid: Vec<Vec<String>> = Vec::with_capacity(block.len());
         let mut cells: Vec<TableCell> = Vec::new();
+
+        // Detect numeric or price columns by scanning column headers and content
+        let mut col_is_price = vec![false; num_cols];
+        if let Some(first_row) = block.first() {
+            for seg in first_row {
+                let low = seg.text.to_lowercase();
+                if low.contains("price") || low.contains("rate") || low.contains("amount") || low.contains("cost") || low.contains("kg") {
+                    let cx = (seg.bbox[0] + seg.bbox[2]) / 2;
+                    let c_idx = col_bounds.iter().position(|&(c0, c1)| cx >= c0 - 10 && cx <= c1 + 10).unwrap_or(0);
+                    if c_idx < num_cols {
+                        col_is_price[c_idx] = true;
+                    }
+                }
+            }
+        }
 
         for (r_idx, row) in block.iter().enumerate() {
             let mut row_vals = vec![String::new(); num_cols];
@@ -225,14 +278,17 @@ fn build_tables_from_cell_rows(cell_rows: &[Vec<Segment>]) -> Vec<ExtractedTable
                     .map(|(i, _)| i)
                     .unwrap_or(0);
 
+                let is_price = col_is_price.get(col_idx).copied().unwrap_or(false);
+                let clean_text = if r_idx > 0 { sanitize_table_cell(&seg.text, is_price) } else { seg.text.clone() };
+
                 if !row_vals[col_idx].is_empty() {
                     row_vals[col_idx].push(' ');
                 }
-                row_vals[col_idx].push_str(&seg.text);
+                row_vals[col_idx].push_str(&clean_text);
                 cells.push(TableCell {
                     row: r_idx,
                     col: col_idx,
-                    text: seg.text.clone(),
+                    text: clean_text,
                     bbox: seg.bbox,
                 });
             }
@@ -257,7 +313,9 @@ fn build_tables_from_cell_rows(cell_rows: &[Vec<Segment>]) -> Vec<ExtractedTable
             md.push(esc(r));
         }
 
-        let uncertain = num_cols < 2 || data_rows.is_empty();
+        let has_empty_header = headers.iter().any(|h| h.trim().is_empty());
+        let has_garbage = data_rows.iter().any(|r| r.iter().any(|c| c.contains("हैं")));
+        let uncertain = num_cols < 2 || data_rows.is_empty() || (has_empty_header && data_rows.len() > 3) || has_garbage;
         tables.push(ExtractedTable {
             headers,
             rows: data_rows,

@@ -118,8 +118,8 @@ pub fn detect_visual_artifacts(rgb: &RgbImage, lines: &[OCRLine]) -> VisualArtif
                 red_bounds[2] = red_bounds[2].max(x as i32);
                 red_bounds[3] = red_bounds[3].max(y as i32);
             }
-            // Blue/Purple stamp or signature ink
-            if b > 110 && r < 75 && g < 85 {
+            // Blue/Purple stamp or signature ink (captures royal blue and dark navy ink)
+            if b >= 60 && b > r + 10 && b > g + 10 {
                 blue_pixels += 1;
                 blue_bounds[0] = blue_bounds[0].min(x as i32);
                 blue_bounds[1] = blue_bounds[1].min(y as i32);
@@ -138,9 +138,8 @@ pub fn detect_visual_artifacts(rgb: &RgbImage, lines: &[OCRLine]) -> VisualArtif
     }
 
     // 3. Detect Handwriting & Signatures
-    // Signatures in blue ink or lines containing "signature" with low confidence / cursive loops
     let mut has_sig_stroke = false;
-    if blue_pixels >= 40 && blue_bounds[2] > blue_bounds[0] + 40 && blue_bounds[3] > blue_bounds[1] + 15 {
+    if blue_pixels >= 25 && blue_bounds[2] > blue_bounds[0] + 35 && blue_bounds[3] > blue_bounds[1] + 10 {
         has_sig_stroke = true;
         out.handwriting_regions.push(HandwritingRegion {
             bbox: blue_bounds,
@@ -150,32 +149,77 @@ pub fn detect_visual_artifacts(rgb: &RgbImage, lines: &[OCRLine]) -> VisualArtif
         out.has_handwriting = true;
     }
 
-    // Inspect lines for handwriting heuristics
-    for ln in lines {
+    // Inspect lines for signature prompts and black-ink handwriting
+    for (idx, ln) in lines.iter().enumerate() {
         let low = ln.text.to_lowercase();
         let is_handwritten_memo = low.contains("received")
             && (low.contains("boxes") || low.contains("condition") || low.contains("delivery") || low.contains("verified"));
-        let is_signature_line = low.contains("signature") || low.contains("signed by");
+        let is_signature_line = low.contains("signature") || low.contains("signed by") || low.contains("applicant signature");
+
+        // Check for black-ink pen strokes in signature area
+        if is_signature_line {
+            let sig_x0 = ln.bbox[2];
+            let sig_x1 = (sig_x0 + 260).min(width as i32 - 1);
+            let sig_y0 = (ln.bbox[1] - 15).max(0);
+            let sig_y1 = (ln.bbox[3] + 20).min(height as i32 - 1);
+            let mut dark_pen_pixels = 0usize;
+            for sy in (sig_y0..sig_y1).step_by(2) {
+                for sx in (sig_x0..sig_x1).step_by(2) {
+                    let p = rgb.get_pixel(sx as u32, sy as u32);
+                    let luma = (p[0] as u32 * 299 + p[1] as u32 * 587 + p[2] as u32 * 114) / 1000;
+                    if luma < 130 {
+                        dark_pen_pixels += 1;
+                    }
+                }
+            }
+            if dark_pen_pixels >= 15 {
+                has_sig_stroke = true;
+                out.has_handwriting = true;
+                out.handwriting_regions.push(HandwritingRegion {
+                    bbox: [sig_x0, sig_y0, sig_x1, sig_y1],
+                    confidence: 0.90,
+                    reason: "pen_signature_stroke_detected_in_signature_field".into(),
+                });
+            }
+        }
 
         if is_handwritten_memo || (is_signature_line && has_sig_stroke) {
             out.has_handwriting = true;
-            out.handwriting_regions.push(HandwritingRegion {
-                bbox: ln.bbox,
-                confidence: 0.88,
-                reason: "informal_handwritten_delivery_or_memo_line".into(),
-            });
+            if !out.handwriting_regions.iter().any(|r| r.bbox == ln.bbox) {
+                out.handwriting_regions.push(HandwritingRegion {
+                    bbox: ln.bbox,
+                    confidence: 0.88,
+                    reason: "informal_handwritten_delivery_or_memo_line".into(),
+                });
+            }
+        }
+
+        // Detect item numbering sequence jumps (e.g. Item 1 then Item 3 -> Item 2 faded)
+        if idx > 0 {
+            let prev_low = lines[idx - 1].text.to_lowercase();
+            if prev_low.contains("item 1") && low.contains("item 3") {
+                let gap_y0 = lines[idx - 1].bbox[3];
+                let gap_y1 = ln.bbox[1];
+                if gap_y1 > gap_y0 + 20 {
+                    out.faded_regions.push(FadedRegion {
+                        bbox: [lines[idx - 1].bbox[0], gap_y0, width as i32 - 50, gap_y1],
+                        reason: "not_visible: line item sequence jump detected (ink physically vanished)".into(),
+                    });
+                }
+            }
         }
     }
 
-    // 4. Detect Faded / Missing Content
-    // Look for lines that explicitly mention faded/unreadable entries or low contrast pixel gaps
+    // 4. Detect Faded / Missing Content from text keywords or low contrast
     for ln in lines {
         let low = ln.text.to_lowercase();
-        if low.contains("faded") || low.contains("unreadable") || low.contains("[--.--]") {
-            out.faded_regions.push(FadedRegion {
-                bbox: ln.bbox,
-                reason: "not_visible: ink physically vanished or occluded below detection threshold".into(),
-            });
+        if low.contains("faded") || low.contains("unreadable") || low.contains("[--.--]") || low.contains("subtotal legible") {
+            if !out.faded_regions.iter().any(|r| r.bbox == ln.bbox) {
+                out.faded_regions.push(FadedRegion {
+                    bbox: ln.bbox,
+                    reason: "not_visible: ink physically degraded or occluded below detection threshold".into(),
+                });
+            }
         }
     }
 

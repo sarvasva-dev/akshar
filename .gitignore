@@ -5,3 +5,5 @@ assets/tessdata/
 automation/
 /data/
 .directory
+dist/*.tar.gz
+dist/akshar-*

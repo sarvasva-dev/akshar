@@ -11,8 +11,11 @@ use crate::tiling::OCRLine;
 
 #[derive(Debug, Clone)]
 struct TsvWord {
+    #[allow(dead_code)]
     block: i32,
+    #[allow(dead_code)]
     par: i32,
+    #[allow(dead_code)]
     line: i32,
     #[allow(dead_code)]
     word_idx: i32,
@@ -151,30 +154,37 @@ pub fn run_fast_document_ocr(
     if want_hindi && tess_dir.join("hin.traineddata").is_file() {
         if let Ok(hin_words) = run_tesseract_tsv_file(&img_path, &tess_dir, "hin+eng", None) {
             // Word-by-word confidence fusion:
-            // Keep English digits/codes where `eng` has high confidence (>= 80%),
-            // and substitute `hin+eng` Devanagari words where `hin+eng` has higher confidence.
+            // Keep English digits, table cells, and codes where `eng` has reasonable confidence,
+            // never overwrite with isolated Devanagari stopword noise (`हैं`, `हज`, `था`, etc.).
             for w in &mut words {
                 if let Some(hw) = hin_words
                     .iter()
-                    .find(|h| word_overlap_ratio(w.bbox, h.bbox) >= 0.40)
+                    .find(|h| word_overlap_ratio(w.bbox, h.bbox) >= 0.35)
                 {
-                    let eng_is_strong_num = w.conf >= 85.0
-                        && w.text.chars().any(|c| c.is_ascii_digit())
-                        && !contains_devanagari(&hw.text);
-                    if !eng_is_strong_num
-                        && (hw.conf > w.conf + 3.0
-                            || (contains_devanagari(&hw.text) && hw.conf >= 45.0))
-                    {
+                    let is_hindi_noise = matches!(hw.text.trim(), "हैं" | "है" | "था" | "थी" | "थे" | "हज" | "हू" | "का" | "के" | "की" | "को" | "में");
+                    let eng_has_num = w.text.chars().any(|c| c.is_ascii_digit());
+                    let eng_is_strong = w.conf >= 60.0 || (eng_has_num && w.conf >= 35.0);
+
+                    if is_hindi_noise {
+                        // If it's a misread Rupee token preceding or attached to an amount, turn into ₹
+                        if is_rupee_misread_token(&hw.text) && (eng_has_num || w.text.starts_with('2') || w.text.starts_with('7')) {
+                            if !eng_has_num {
+                                w.text = "₹".into();
+                                w.conf = 90.0;
+                            }
+                        }
+                    } else if !eng_is_strong && contains_devanagari(&hw.text) && hw.conf >= 50.0 {
                         w.text = hw.text.clone();
                         w.conf = hw.conf;
                     }
                 }
             }
 
-            // Append any Hindi words completely missed by English LSTM pass
+            // Append any genuine Hindi words completely missed by English LSTM pass (must not be noise)
             for hw in hin_words {
-                if contains_devanagari(&hw.text) && hw.conf >= 45.0 {
-                    let already_covered = words.iter().any(|w| word_overlap_ratio(w.bbox, hw.bbox) >= 0.35);
+                let is_noise = matches!(hw.text.trim(), "हैं" | "है" | "था" | "थी" | "थे" | "हज" | "हू");
+                if !is_noise && contains_devanagari(&hw.text) && hw.conf >= 55.0 {
+                    let already_covered = words.iter().any(|w| word_overlap_ratio(w.bbox, hw.bbox) >= 0.30);
                     if !already_covered {
                         words.push(hw);
                     }
@@ -183,46 +193,80 @@ pub fn run_fast_document_ocr(
         }
     }
 
-    // Filter out low-confidence noise speckles
-    words.retain(|w| w.conf >= 32.0 && !w.text.trim().is_empty());
+    // Filter out low-confidence noise speckles (preserve words with alpha/digits down to conf 22.0)
+    words.retain(|w| {
+        let t = w.text.trim();
+        if t.is_empty() {
+            return false;
+        }
+        let has_alnum = t.chars().any(|c| c.is_alphanumeric());
+        if has_alnum {
+            w.conf >= 22.0
+        } else {
+            w.conf >= 38.0
+        }
+    });
     if words.is_empty() {
         return Ok(None);
     }
 
     let mean_conf: f64 = words.iter().map(|w| w.conf).sum::<f64>() / (words.len() as f64);
     // Natural scene photos or dark complex app screenshots where Tesseract struggles fall back to Mirage
-    if mean_conf < 58.0 {
+    if mean_conf < 52.0 {
         return Ok(None);
     }
 
+    // Sort words by vertical center (quantized to line-height bucket) then horizontal start
+    words.sort_by(|a, b| {
+        let ay = (a.bbox[1] + a.bbox[3]) / 2;
+        let by = (b.bbox[1] + b.bbox[3]) / 2;
+        let bucket_a = ay / 8;
+        let bucket_b = by / 8;
+        bucket_a.cmp(&bucket_b).then_with(|| a.bbox[0].cmp(&b.bbox[0]))
+    });
+
     // Repair standalone `₹` tokens immediately preceding a numeric amount on the same line
     for i in 0..words.len().saturating_sub(1) {
-        let same_line = words[i].block == words[i + 1].block
-            && words[i].par == words[i + 1].par
-            && words[i].line == words[i + 1].line;
+        let y_overlap = (words[i].bbox[3].min(words[i + 1].bbox[3]) - words[i].bbox[1].max(words[i + 1].bbox[1])).max(0);
+        let same_line = y_overlap >= (words[i].bbox[3] - words[i].bbox[1]).min(words[i + 1].bbox[3] - words[i + 1].bbox[1]) / 2;
         if same_line
             && is_rupee_misread_token(&words[i].text)
-            && looks_like_numeric_amount(&words[i + 1].text)
+            && (looks_like_numeric_amount(&words[i + 1].text) || words[i + 1].text.chars().any(|c| c.is_ascii_digit()))
         {
             words[i].text = "₹".into();
             words[i].conf = words[i].conf.max(90.0);
         }
     }
 
-    // Group words into lines by (block, par, line)
+    // Geometric line clustering: group words with overlapping vertical bounds and close horizontal gap
     let mut line_groups: Vec<Vec<&TsvWord>> = Vec::new();
     for w in &words {
-        let same = line_groups
-            .last()
-            .and_then(|g| g.first())
-            .map(|first| first.block == w.block && first.par == w.par && first.line == w.line)
-            .unwrap_or(false);
-        if same {
-            line_groups.last_mut().unwrap().push(w);
-        } else {
+        let mut placed = false;
+        if let Some(last_grp) = line_groups.last_mut() {
+            if let Some(prev) = last_grp.last() {
+                let y_overlap = (prev.bbox[3].min(w.bbox[3]) - prev.bbox[1].max(w.bbox[1])).max(0);
+                let min_h = (prev.bbox[3] - prev.bbox[1]).min(w.bbox[3] - w.bbox[1]).max(1);
+                let x_gap = w.bbox[0] - prev.bbox[2];
+                // Same line segment if vertical overlap >= 45% and horizontal gap < 70 px
+                if (y_overlap as f64 / min_h as f64) >= 0.45 && x_gap >= -15 && x_gap <= 70 {
+                    last_grp.push(w);
+                    placed = true;
+                }
+            }
+        }
+        if !placed {
             line_groups.push(vec![w]);
         }
     }
+
+    // Sort line groups vertically by y0 then x0
+    line_groups.sort_by(|a, b| {
+        let ay = a.iter().map(|w| w.bbox[1]).min().unwrap_or(0);
+        let by = b.iter().map(|w| w.bbox[1]).min().unwrap_or(0);
+        let ax = a.iter().map(|w| w.bbox[0]).min().unwrap_or(0);
+        let bx = b.iter().map(|w| w.bbox[0]).min().unwrap_or(0);
+        (ay / 8).cmp(&(by / 8)).then_with(|| ax.cmp(&bx))
+    });
 
     let mut ocr_lines = Vec::with_capacity(line_groups.len());
     let mut word_boxes = Vec::with_capacity(words.len());

@@ -1,0 +1,242 @@
+{
+  "real_inv_01": {
+    "file": "real_inv_01.png",
+    "type": "invoice",
+    "vendor": "ABCD TECHONOLOGIES",
+    "gstin": "37B76C238B7E1ZS",
+    "invoice_number": "INV-120152",
+    "total": "124200.00",
+    "currency": "INR",
+    "subtotal": "100000.00",
+    "tax": "24200.00",
+    "reconciled": false
+  },
+  "real_inv_02": {
+    "file": "real_inv_02.png",
+    "type": "invoice",
+    "vendor": "Demo Traders Pvt Ltd",
+    "gstin": "29AAAAADOOAIZY",
+    "total": "1540.00",
+    "currency": "INR",
+    "reconciled": false
+  },
+  "real_inv_03": {
+    "file": "real_inv_03.png",
+    "type": "invoice",
+    "vendor": "Demo Traders Pvt Ltd",
+    "gstin": "29AAAAADOOAIZY",
+    "total": "1540.00",
+    "currency": "INR",
+    "reconciled": false
+  },
+  "real_inv_04": {
+    "file": "real_inv_04.png",
+    "type": "invoice",
+    "vendor": "TechCorp India",
+    "gstin": "27AADCB2230M1Z2",
+    "invoice_number": "INV-1004",
+    "subtotal": "38104.00",
+    "tax": "6858.72",
+    "total": "44962.72",
+    "currency": "INR",
+    "reconciled": true
+  },
+  "real_inv_05": {
+    "file": "real_inv_05.png",
+    "type": "invoice",
+    "vendor": "Global Solutions",
+    "gstin": "29ABCDE1234F2Z5",
+    "invoice_number": "INV-1005",
+    "subtotal": "37809.00",
+    "tax": "6805.62",
+    "total": "44614.62",
+    "currency": "INR",
+    "reconciled": true
+  },
+  "real_inv_06": {
+    "file": "real_inv_06.png",
+    "type": "invoice",
+    "vendor": "Smart Systems",
+    "gstin": "33AABCS1429B1Z4",
+    "invoice_number": "INV-1006",
+    "subtotal": "25131.00",
+    "tax": "4523.58",
+    "total": "29654.58",
+    "currency": "INR",
+    "reconciled": true
+  },
+  "real_inv_07": {
+    "file": "real_inv_07.png",
+    "type": "invoice",
+    "vendor": "Innovatex Pvt Ltd",
+    "gstin": "07AACCI1234G1Z2",
+    "invoice_number": "INV-1007",
+    "subtotal": "34253.00",
+    "tax": "6165.54",
+    "total": "40418.54",
+    "currency": "INR",
+    "reconciled": true
+  },
+  "real_inv_08": {
+    "file": "real_inv_08.png",
+    "type": "invoice",
+    "vendor": "NextGen Tech",
+    "gstin": "19AAAAA0000A1Z5",
+    "invoice_number": "INV-1008",
+    "subtotal": "47171.00",
+    "tax": "8490.78",
+    "total": "55661.78",
+    "currency": "INR",
+    "reconciled": true
+  },
+  "real_inv_09": {
+    "file": "real_inv_09.png",
+    "type": "invoice",
+    "vendor": "TechCorp India",
+    "gstin": "27AADCB2230M1Z2",
+    "invoice_number": "INV-1009",
+    "subtotal": "42071.00",
+    "tax": "7572.78",
+    "total": "49643.78",
+    "currency": "INR",
+    "reconciled": true
+  },
+  "real_inv_10": {
+    "file": "real_inv_10.png",
+    "type": "invoice",
+    "vendor": "Global Solutions",
+    "gstin": "29ABCDE1234F2Z5",
+    "invoice_number": "INV-1010",
+    "subtotal": "46836.00",
+    "tax": "8430.48",
+    "total": "55266.48",
+    "currency": "INR",
+    "reconciled": true
+  },
+  "real_rcpt_01": {
+    "file": "real_rcpt_000.jpg",
+    "type": "receipt",
+    "vendor": "BOOK TA .K (TAMAN DAYA) SDN BHD",
+    "total": "9.00",
+    "currency": "MYR",
+    "date": "25/12/2018",
+    "faded": true
+  },
+  "real_rcpt_02": {
+    "file": "real_rcpt_001.jpg",
+    "type": "receipt",
+    "vendor": "INDAH GIFT & HOME DECO",
+    "total": "60.30",
+    "currency": "MYR",
+    "date": "19/10/2018",
+    "faded": false
+  },
+  "real_rcpt_03": {
+    "file": "real_rcpt_002.jpg",
+    "type": "receipt",
+    "vendor": "MR D.I.Y. (JOHOR) SDN BHD",
+    "total": "33.90",
+    "currency": "MYR",
+    "date": "12-01-19",
+    "faded": false
+  },
+  "real_rcpt_04": {
+    "file": "real_rcpt_003.jpg",
+    "type": "receipt",
+    "vendor": "YONGFATT ENTERPRISE",
+    "total": "80.90",
+    "currency": "MYR",
+    "date": "25/12/2018",
+    "faded": true
+  },
+  "real_rcpt_05": {
+    "file": "real_rcpt_004.jpg",
+    "type": "receipt",
+    "vendor": "MR D.I.Y. (M) SDN BHD",
+    "total": "30.90",
+    "currency": "MYR",
+    "date": "18-11-18",
+    "faded": false
+  },
+  "real_stmt_01": {
+    "file": "real_stmt_01.png",
+    "type": "bank_statement",
+    "account_holder": "M/S.COSMOS ENTERPRISES",
+    "account_number": "666405112451",
+    "total": "27314.45",
+    "currency": "INR",
+    "ledger_verified": true
+  },
+  "real_stmt_02": {
+    "file": "real_stmt_02.png",
+    "type": "bank_statement",
+    "account_holder": "John Doe",
+    "opening_balance": "1000.00",
+    "total": "3227.13",
+    "currency": "USD",
+    "ledger_verified": true
+  },
+  "real_form_01": {
+    "file": "real_form_01.png",
+    "type": "form",
+    "has_handwriting": true,
+    "has_checkboxes": true,
+    "checkbox_count": 4
+  },
+  "real_form_02": {
+    "file": "real_form_02.png",
+    "type": "form",
+    "has_handwriting": true,
+    "has_checkboxes": true,
+    "checkbox_count": 4
+  },
+  "real_id_01": {
+    "file": "real_id_01.jpg",
+    "type": "id_card",
+    "authority": "INCOME TAX DEPARTMENT GOVT. OF INDIA",
+    "id_number": "ANYPAN4YOU"
+  },
+  "real_handwriting_01": {
+    "file": "real_handwriting_01.png",
+    "type": "handwritten_note",
+    "has_handwriting": true,
+    "must_flag": true
+  },
+  "real_column_01": {
+    "file": "real_column_01.png",
+    "type": "article",
+    "multi_column": true,
+    "first_section": "Abstract"
+  },
+  "real_menu_01": {
+    "file": "real_menu_01.png",
+    "type": "menu",
+    "has_items": true
+  },
+  "real_sample_smoke": {
+    "file": "real_sample_smoke.pdf",
+    "type": "hybrid_pdf",
+    "page_count": 3,
+    "p1_type": "native",
+    "p2_type": "scanned_invoice",
+    "p2_total": "12345.00",
+    "p3_type": "native_table",
+    "p3_table": [
+      [
+        "Item",
+        "Qty",
+        "Price"
+      ],
+      [
+        "Pen",
+        "10",
+        "50"
+      ],
+      [
+        "Book",
+        "4",
+        "200"
+      ]
+    ]
+  }
+}

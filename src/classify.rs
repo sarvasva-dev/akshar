@@ -34,6 +34,7 @@ pub fn classify_page(
     let mut scores: Vec<(&str, f64, Vec<String>)> = vec![
         ("invoice", 0.0, vec![]),
         ("receipt", 0.0, vec![]),
+        ("bank_statement", 0.0, vec![]),
         ("id_card", 0.0, vec![]),
         ("letter", 0.0, vec![]),
         ("form", 0.0, vec![]),
@@ -82,6 +83,28 @@ pub fn classify_page(
     ] {
         if lower.contains(kw) {
             add("receipt", w, &format!("kw:{kw}"));
+        }
+    }
+
+    // Bank statement cues
+    for (kw, w) in [
+        ("bank statement", 0.65),
+        ("account statement", 0.65),
+        ("summary of account", 0.60),
+        ("operative account", 0.55),
+        ("transaction account", 0.60),
+        ("closing balance", 0.50),
+        ("opening balance", 0.50),
+        ("account number", 0.35),
+        ("statement of account", 0.60),
+        ("debit", 0.20),
+        ("credit", 0.20),
+        ("micr", 0.35),
+        ("ifsc", 0.35),
+        ("bank", 0.25),
+    ] {
+        if lower.contains(kw) {
+            add("bank_statement", w, &format!("kw:{kw}"));
         }
     }
 

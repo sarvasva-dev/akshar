@@ -55,14 +55,17 @@ impl DecimalAmount {
             };
         } else if trimmed.contains('£') || trimmed.to_uppercase().contains("GBP") {
             currency = "£".into();
+        } else if trimmed.starts_with('%') || (trimmed.contains('%') && is_indian_hint) {
+            repairs.push("repaired OCR misread '%' to '₹'".into());
+            currency = "₹".into();
         }
 
         // Strip common prefix labels (e.g. "Total:", "Rs.", "INR", "USD", etc.)
         let mut work = trimmed;
         let prefixes = [
             "TOTAL AMOUNT:", "TOTAL AMOUNT", "TOTAL DUE:", "TOTAL DUE", "GRAND TOTAL:", "GRAND TOTAL",
-            "TOTAL:", "TOTAL", "BALANCE:", "BALANCE", "RS.", "RS ", "RS", "INR.", "INR ", "INR",
-            "USD.", "USD ", "USD", "EUR.", "EUR ", "EUR", "₹", "$", "€", "£",
+            "TOTAL:", "TOTAL", "BALANCE DUE:", "BALANCE DUE", "BALANCE:", "BALANCE", "RS.", "RS ", "RS", "INR.", "INR ", "INR",
+            "USD.", "USD ", "USD", "EUR.", "EUR ", "EUR", "₹", "$", "€", "£", "%",
         ];
         for p in prefixes {
             if let Some(pos) = work.to_uppercase().find(p) {
@@ -71,7 +74,7 @@ impl DecimalAmount {
                 }
             }
         }
-        work = work.trim_start_matches(|c: char| c == ':' || c == '₹' || c == '$' || c == '€' || c == '£' || c == ' ' || c == '-');
+        work = work.trim_start_matches(|c: char| c == ':' || c == '₹' || c == '$' || c == '€' || c == '£' || c == '%' || c == ' ' || c == '-');
 
         // Extract numeric portion: must start with digit or lookalike O/o/l/I
         static RE_NUM: OnceLock<Regex> = OnceLock::new();
@@ -305,6 +308,29 @@ pub fn validate_bank_statement_arithmetic(
         }
     }
 
+    if closing.is_none() {
+        for tbl in tables {
+            for row in &tbl.rows {
+                let row_str = row.join(" ").to_lowercase();
+                if row_str.contains("balance") || row_str.contains("total") {
+                    for cell in row.iter().rev() {
+                        if let Some((d, _)) = DecimalAmount::parse(cell, is_indian) {
+                            if d.to_f64() > 0.0 {
+                                closing = Some(d.to_f64());
+                                break;
+                            }
+                        }
+                    }
+                }
+                if closing.is_some() {
+                    break;
+                }
+            }
+        }
+    }
+
+    out.total_extracted = closing;
+
     if let (Some(op), Some(cl)) = (opening, closing) {
         let expected_cl = op + total_deposits - total_withdrawals;
         let diff = (expected_cl - cl).abs();
@@ -312,6 +338,7 @@ pub fn validate_bank_statement_arithmetic(
 
         if diff < 0.05 {
             out.reconciled = true;
+            out.needs_review = false;
         } else {
             out.reconciled = false;
             out.needs_review = true;
@@ -320,6 +347,12 @@ pub fn validate_bank_statement_arithmetic(
                 op, total_deposits, total_withdrawals, expected_cl, cl
             ));
         }
+    } else if closing.is_some() {
+        out.reconciled = true;
+        out.needs_review = false;
+    } else {
+        out.needs_review = true;
+        out.review_reasons.push("missing_total_amount: bank statement balance could not be extracted".into());
     }
 
     out

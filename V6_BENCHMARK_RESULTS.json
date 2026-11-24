@@ -1,0 +1,859 @@
+{
+  "benchmark_timestamp": "2026-11-24 11:34:31 UTC",
+  "synthetic_corpus": {
+    "corpus": "Synthetic Corpus (v5 generated)",
+    "total_documents": 28,
+    "avg_latency_ms": 614.39,
+    "silent_money_errors": 0,
+    "total_accuracy": "18/21",
+    "total_accuracy_pct": 85.7,
+    "vendor_accuracy": "13/20",
+    "vendor_accuracy_pct": 65.0,
+    "reconciled_strictly_true": "5/15",
+    "tables_content_accurate": "4/4",
+    "handwriting_flagged": "2/2",
+    "faded_flagged": "1/1",
+    "determinism": "28/28",
+    "documents": {
+      "inv_01_tech_consulting.png": {
+        "wall_ms": 572.96,
+        "vendor_expected": "Apex Digital Solutions Pvt Ltd",
+        "vendor_extracted": "Apex Digital Solutions Pvt Ltd",
+        "vendor_correct": true,
+        "total_expected": "\u20b9 100,300.00",
+        "total_extracted": "\u20b9 100300.00",
+        "total_correct": true,
+        "needs_review": true,
+        "review_reasons": [
+          "table_uncertain: table grid could not be reconstructed with high geometric confidence",
+          "line_items_sum_mismatch: table items sum to 85024.00, but subtotal is 85000.00"
+        ],
+        "reconciled": true,
+        "table_count": 1,
+        "deterministic": true
+      },
+      "inv_02_retail_hardware.png": {
+        "wall_ms": 562.99,
+        "vendor_expected": "Sharma Hardware & Tools Pvt Ltd",
+        "vendor_extracted": "Sharma Hardware & Tools Pvt Ltd",
+        "vendor_correct": true,
+        "total_expected": "\u20b9 14,750.00",
+        "total_extracted": "14750.00",
+        "total_correct": true,
+        "needs_review": false,
+        "review_reasons": [],
+        "reconciled": false,
+        "table_count": 1,
+        "deterministic": true
+      },
+      "inv_03_medical_supply.png": {
+        "wall_ms": 624.54,
+        "vendor_expected": "MediCare Lifesciences Pvt Ltd",
+        "vendor_extracted": "MediCare Lifesciences Pvt Ltd",
+        "vendor_correct": true,
+        "total_expected": "\u20b9 26,880.00",
+        "total_extracted": "26880.00",
+        "total_correct": true,
+        "needs_review": true,
+        "review_reasons": [
+          "table_uncertain: table grid could not be reconstructed with high geometric confidence",
+          "line_items_sum_mismatch: table items sum to 5622.00, but subtotal is 24000.00"
+        ],
+        "reconciled": true,
+        "table_count": 1,
+        "deterministic": true
+      },
+      "inv_04_interstate_igst.png": {
+        "wall_ms": 521.08,
+        "vendor_expected": "CloudGrid Networks India Pvt Ltd",
+        "vendor_extracted": "CloudG Networks India Pvt Ltd",
+        "vendor_correct": false,
+        "total_expected": "\u20b9 64,900.00",
+        "total_extracted": "64900.00",
+        "total_correct": true,
+        "needs_review": true,
+        "review_reasons": [
+          "line_items_sum_mismatch: table items sum to 55011.00, but subtotal is 55000.00"
+        ],
+        "reconciled": false,
+        "table_count": 2,
+        "deterministic": true
+      },
+      "inv_05_freight_logistics.png": {
+        "wall_ms": 541.82,
+        "vendor_expected": "SpeedyLog Freight Carriers Pvt Ltd",
+        "vendor_extracted": "SpeedyLog Freight Carriers Pvt Ltd",
+        "vendor_correct": true,
+        "total_expected": "\u20b9 42,560.00",
+        "total_extracted": "\u20b9 42560.00",
+        "total_correct": true,
+        "needs_review": true,
+        "review_reasons": [
+          "arithmetic_mismatch: subtotal (38000.00) + tax (42560.00) = 80560.00, but total is 42560.00 (diff: 38000.00)"
+        ],
+        "reconciled": false,
+        "table_count": 1,
+        "deterministic": true
+      },
+      "inv_06_automotive_parts.png": {
+        "wall_ms": 581.32,
+        "vendor_expected": "Superb Auto Care Motors Pvt Ltd",
+        "vendor_extracted": "Superb Auto Care Motors Pvt Ltd",
+        "vendor_correct": true,
+        "total_expected": "\u20b9 13,924.00",
+        "total_extracted": "13924.00",
+        "total_correct": true,
+        "needs_review": true,
+        "review_reasons": [
+          "table_uncertain: table grid could not be reconstructed with high geometric confidence",
+          "line_items_sum_mismatch: table items sum to 9019.00, but subtotal is 11800.00"
+        ],
+        "reconciled": true,
+        "table_count": 1,
+        "deterministic": true
+      },
+      "inv_07_printing_packaging.png": {
+        "wall_ms": 593.91,
+        "vendor_expected": "Vibrant Print Media Enterprises",
+        "vendor_extracted": "Vibrant Print Media Enterprises",
+        "vendor_correct": true,
+        "total_expected": "\u20b9 24,190.00",
+        "total_extracted": "24190.00",
+        "total_correct": true,
+        "needs_review": false,
+        "review_reasons": [],
+        "reconciled": false,
+        "table_count": 1,
+        "deterministic": true
+      },
+      "inv_08_electrical_contractor.png": {
+        "wall_ms": 543.73,
+        "vendor_expected": "PowerTech Electricals Pvt Ltd",
+        "vendor_extracted": "PowerTech Elect! \u2018als Pvt Ltd",
+        "vendor_correct": false,
+        "total_expected": "\u20b9 43,660.00",
+        "total_extracted": "43660.00",
+        "total_correct": true,
+        "needs_review": true,
+        "review_reasons": [
+          "line_items_sum_mismatch: table items sum to 37011.00, but subtotal is 37000.00"
+        ],
+        "reconciled": true,
+        "table_count": 2,
+        "deterministic": true
+      },
+      "inv_09_cloud_infrastructure.png": {
+        "wall_ms": 532.99,
+        "vendor_expected": "SkyLine Hosting Services Pvt Ltd",
+        "vendor_extracted": "SkyLine Hosting Services Pvt Ltd",
+        "vendor_correct": true,
+        "total_expected": "\u20b9 11,210.00",
+        "total_extracted": "11210.00",
+        "total_correct": true,
+        "needs_review": true,
+        "review_reasons": [
+          "line_items_sum_mismatch: table items sum to 9516.00, but subtotal is 9500.00"
+        ],
+        "reconciled": true,
+        "table_count": 1,
+        "deterministic": true
+      },
+      "inv_10_office_furniture.png": {
+        "wall_ms": 538.3,
+        "vendor_expected": "Modern Office Decor Pvt Ltd",
+        "vendor_extracted": "Modern Office Decor Pvt Ltd",
+        "vendor_correct": true,
+        "total_expected": "\u20b9 82,600.00",
+        "total_extracted": "\u20b9 82600.00",
+        "total_correct": true,
+        "needs_review": true,
+        "review_reasons": [
+          "arithmetic_mismatch: subtotal (70000.00) + tax (82600.00) = 152600.00, but total is 82600.00 (diff: 70000.00)"
+        ],
+        "reconciled": false,
+        "table_count": 1,
+        "deterministic": true
+      },
+      "rcpt_01_grocery_thermal.png": {
+        "wall_ms": 495.01,
+        "vendor_expected": "FreshMart Supermarket",
+        "vendor_extracted": "FreshMart Supermarket",
+        "vendor_correct": true,
+        "total_expected": "\u20b9 372.75",
+        "total_extracted": "372.75",
+        "total_correct": true,
+        "needs_review": true,
+        "review_reasons": [
+          "table_uncertain: table grid could not be reconstructed with high geometric confidence"
+        ],
+        "reconciled": false,
+        "table_count": 1,
+        "deterministic": true
+      },
+      "rcpt_02_cafe_thermal.png": {
+        "wall_ms": 490.11,
+        "vendor_expected": "The Roasted Bean Cafe",
+        "vendor_extracted": "The Roasted Bean Cafe",
+        "vendor_correct": true,
+        "total_expected": "\u20b9 567.00",
+        "total_extracted": "567.00",
+        "total_correct": true,
+        "needs_review": false,
+        "review_reasons": [],
+        "reconciled": false,
+        "table_count": 1,
+        "deterministic": true
+      },
+      "rcpt_03_fuel_pump.png": {
+        "wall_ms": 403.12,
+        "vendor_expected": "HPCL Auto Care Station",
+        "vendor_extracted": null,
+        "vendor_correct": false,
+        "total_expected": "\u20b9 2,412.50",
+        "total_extracted": "\u20b9 2412.50",
+        "total_correct": true,
+        "needs_review": false,
+        "review_reasons": [],
+        "reconciled": false,
+        "table_count": 0,
+        "deterministic": true
+      },
+      "rcpt_04_pharmacy_pos.png": {
+        "wall_ms": 536.44,
+        "vendor_expected": "MedPlus Chemist & Druggist",
+        "vendor_extracted": "MedPlus Chemist & Druggist",
+        "vendor_correct": true,
+        "total_expected": "\u20b9 367.50",
+        "total_extracted": "367.50",
+        "total_correct": true,
+        "needs_review": true,
+        "review_reasons": [
+          "table_uncertain: table grid could not be reconstructed with high geometric confidence"
+        ],
+        "reconciled": false,
+        "table_count": 1,
+        "deterministic": true
+      },
+      "rcpt_05_restaurant_pos.png": {
+        "wall_ms": 489.49,
+        "vendor_expected": "Urban Spice Bistro",
+        "vendor_extracted": "Urban Spice Bistro",
+        "vendor_correct": true,
+        "total_expected": "\u20b9 714.00",
+        "total_extracted": "\u20b9 714.00",
+        "total_correct": true,
+        "needs_review": false,
+        "review_reasons": [],
+        "reconciled": false,
+        "table_count": 1,
+        "deterministic": true
+      },
+      "stmt_01_hdfc_bank.png": {
+        "wall_ms": 788.83,
+        "vendor_expected": "HDFC BANK LIMITED",
+        "vendor_extracted": null,
+        "vendor_correct": false,
+        "total_expected": "\u20b9 145,270.00",
+        "total_extracted": "1.0",
+        "total_correct": false,
+        "needs_review": true,
+        "review_reasons": [
+          "table_uncertain: table grid could not be reconstructed with high geometric confidence",
+          "statement_reconciliation_failed: opening (84200.00) + deposits (0.00) - withdrawals (0.00) = 84200.00, closing is 1.00"
+        ],
+        "reconciled": false,
+        "table_count": 1,
+        "deterministic": true
+      },
+      "stmt_02_sbi_bank.png": {
+        "wall_ms": 792.66,
+        "vendor_expected": "STATE BANK OF INDIA",
+        "vendor_extracted": null,
+        "vendor_correct": false,
+        "total_expected": "\u20b9 58,135.00",
+        "total_extracted": "\u20b9   42,800.00",
+        "total_correct": false,
+        "needs_review": true,
+        "review_reasons": [
+          "table_uncertain: table grid could not be reconstructed with high geometric confidence"
+        ],
+        "reconciled": null,
+        "table_count": 1,
+        "deterministic": true
+      },
+      "table_01_price_schedule.png": {
+        "wall_ms": 538.29,
+        "vendor_expected": null,
+        "vendor_extracted": null,
+        "vendor_correct": null,
+        "total_expected": null,
+        "total_extracted": null,
+        "total_correct": null,
+        "needs_review": false,
+        "review_reasons": [],
+        "reconciled": null,
+        "table_count": 1,
+        "deterministic": true
+      },
+      "table_02_logistics_rate_card.png": {
+        "wall_ms": 498.92,
+        "vendor_expected": null,
+        "vendor_extracted": null,
+        "vendor_correct": null,
+        "total_expected": null,
+        "total_extracted": null,
+        "total_correct": null,
+        "needs_review": false,
+        "review_reasons": [],
+        "reconciled": null,
+        "table_count": 1,
+        "deterministic": true
+      },
+      "bilingual_01_hindi_english.png": {
+        "wall_ms": 723.73,
+        "vendor_expected": "\u0936\u0930\u094d\u092e\u093e \u0907\u0932\u0947\u0915\u094d\u091f\u094d\u0930\u0949\u0928\u093f\u0915\u094d\u0938 \u0938\u094d\u091f\u094b\u0930",
+        "vendor_extracted": null,
+        "vendor_correct": false,
+        "total_expected": "\u20b9 2,832.00",
+        "total_extracted": "2832.00",
+        "total_correct": true,
+        "needs_review": true,
+        "review_reasons": [
+          "table_uncertain: table grid could not be reconstructed with high geometric confidence"
+        ],
+        "reconciled": false,
+        "table_count": 2,
+        "deterministic": true
+      },
+      "photo_01_blurry_phone.png": {
+        "wall_ms": 1651.32,
+        "vendor_expected": "Quantum Analytics LLP",
+        "vendor_extracted": "Quantum Analytics LLP",
+        "vendor_correct": true,
+        "total_expected": "\u20b9 70,800.00",
+        "total_extracted": "\u20b9 70800.00",
+        "total_correct": true,
+        "needs_review": true,
+        "review_reasons": [
+          "line_items_sum_mismatch: table items sum to 70800.00, but subtotal is 60000.00"
+        ],
+        "reconciled": true,
+        "table_count": 1,
+        "deterministic": true
+      },
+      "menu_01_restaurant.png": {
+        "wall_ms": 488.99,
+        "vendor_expected": "THE TANDOOR BISTRO",
+        "vendor_extracted": null,
+        "vendor_correct": false,
+        "total_expected": "\u20b9 2,120",
+        "total_extracted": "\u20b9 280",
+        "total_correct": false,
+        "needs_review": true,
+        "review_reasons": [
+          "missing_total_amount: document contains monetary figures but no verified grand total"
+        ],
+        "reconciled": null,
+        "table_count": 2,
+        "deterministic": true
+      },
+      "handwriting_01_memo.png": {
+        "wall_ms": 366.53,
+        "vendor_expected": null,
+        "vendor_extracted": null,
+        "vendor_correct": null,
+        "total_expected": null,
+        "total_extracted": null,
+        "total_correct": null,
+        "needs_review": true,
+        "review_reasons": [
+          "handwriting_detected: document contains cursive handwriting or signature that may require human review"
+        ],
+        "reconciled": null,
+        "table_count": 0,
+        "deterministic": true
+      },
+      "form_01_gov_application.png": {
+        "wall_ms": 729.31,
+        "vendor_expected": null,
+        "vendor_extracted": null,
+        "vendor_correct": null,
+        "total_expected": null,
+        "total_extracted": null,
+        "total_correct": null,
+        "needs_review": true,
+        "review_reasons": [
+          "handwriting_detected: document contains cursive handwriting or signature that may require human review"
+        ],
+        "reconciled": null,
+        "table_count": 0,
+        "deterministic": true
+      },
+      "form_02_customs_declaration.png": {
+        "wall_ms": 559.12,
+        "vendor_expected": null,
+        "vendor_extracted": null,
+        "vendor_correct": null,
+        "total_expected": null,
+        "total_extracted": null,
+        "total_correct": null,
+        "needs_review": false,
+        "review_reasons": [],
+        "reconciled": null,
+        "table_count": 0,
+        "deterministic": true
+      },
+      "id_01_national_identity.png": {
+        "wall_ms": 470.93,
+        "vendor_expected": null,
+        "vendor_extracted": null,
+        "vendor_correct": null,
+        "total_expected": null,
+        "total_extracted": null,
+        "total_correct": null,
+        "needs_review": true,
+        "review_reasons": [
+          "handwriting_detected: document contains cursive handwriting or signature that may require human review"
+        ],
+        "reconciled": null,
+        "table_count": 0,
+        "deterministic": true
+      },
+      "column_01_academic_paper.png": {
+        "wall_ms": 1061.76,
+        "vendor_expected": null,
+        "vendor_extracted": null,
+        "vendor_correct": null,
+        "total_expected": null,
+        "total_extracted": null,
+        "total_correct": null,
+        "needs_review": false,
+        "review_reasons": [],
+        "reconciled": null,
+        "table_count": 1,
+        "deterministic": true
+      },
+      "faded_01_vintage_receipt.png": {
+        "wall_ms": 504.58,
+        "vendor_expected": null,
+        "vendor_extracted": null,
+        "vendor_correct": null,
+        "total_expected": "112.50",
+        "total_extracted": "112.50",
+        "total_correct": true,
+        "needs_review": true,
+        "review_reasons": [
+          "faded_regions_detected: ink physically degraded or occluded below threshold"
+        ],
+        "reconciled": false,
+        "table_count": 0,
+        "deterministic": true
+      }
+    }
+  },
+  "real_corpus": {
+    "corpus": "Real Physical Corpus (v6 authentic)",
+    "total_documents": 24,
+    "avg_latency_ms": 1405.94,
+    "silent_money_errors": 0,
+    "total_accuracy": "12/18",
+    "total_accuracy_pct": 66.7,
+    "vendor_accuracy": "10/17",
+    "vendor_accuracy_pct": 58.8,
+    "reconciled_strictly_true": "8/12",
+    "tables_content_accurate": "1/1",
+    "handwriting_flagged": "2/3",
+    "faded_flagged": "2/2",
+    "determinism": "24/24",
+    "documents": {
+      "real_inv_01.png": {
+        "wall_ms": 2575.05,
+        "vendor_expected": "ABCD TECHONOLOGIES",
+        "vendor_extracted": "ABCD TECHONOLOGIES",
+        "vendor_correct": true,
+        "total_expected": "124200.00",
+        "total_extracted": "\u20b9 124200.00",
+        "total_correct": true,
+        "needs_review": true,
+        "review_reasons": [
+          "handwriting_detected: document contains cursive handwriting or signature that may require human review"
+        ],
+        "reconciled": false,
+        "table_count": 3,
+        "deterministic": true
+      },
+      "real_inv_02.png": {
+        "wall_ms": 983.34,
+        "vendor_expected": "Demo Traders Pvt Ltd",
+        "vendor_extracted": "Demo Traders Pvt Ltd",
+        "vendor_correct": true,
+        "total_expected": "1540.00",
+        "total_extracted": "\u20b9 81184.00",
+        "total_correct": false,
+        "needs_review": true,
+        "review_reasons": [
+          "handwriting_detected: document contains cursive handwriting or signature that may require human review"
+        ],
+        "reconciled": false,
+        "table_count": 2,
+        "deterministic": true
+      },
+      "real_inv_03.png": {
+        "wall_ms": 1243.87,
+        "vendor_expected": "Demo Traders Pvt Ltd",
+        "vendor_extracted": "Respawn Technologies",
+        "vendor_correct": false,
+        "total_expected": "1540.00",
+        "total_extracted": "\u20b9 4972.52",
+        "total_correct": false,
+        "needs_review": true,
+        "review_reasons": [
+          "handwriting_detected: document contains cursive handwriting or signature that may require human review",
+          "table_uncertain: table grid could not be reconstructed with high geometric confidence"
+        ],
+        "reconciled": false,
+        "table_count": 2,
+        "deterministic": true
+      },
+      "real_inv_04.png": {
+        "wall_ms": 831.12,
+        "vendor_expected": "TechCorp India",
+        "vendor_extracted": "TechCorp India",
+        "vendor_correct": true,
+        "total_expected": "44962.72",
+        "total_extracted": "\u20b9 44962.72",
+        "total_correct": true,
+        "needs_review": true,
+        "review_reasons": [
+          "handwriting_detected: document contains cursive handwriting or signature that may require human review",
+          "table_uncertain: table grid could not be reconstructed with high geometric confidence"
+        ],
+        "reconciled": true,
+        "table_count": 1,
+        "deterministic": true
+      },
+      "real_inv_05.png": {
+        "wall_ms": 728.44,
+        "vendor_expected": "Global Solutions",
+        "vendor_extracted": "Global Solutions",
+        "vendor_correct": true,
+        "total_expected": "44614.62",
+        "total_extracted": "\u20b9 44614.62",
+        "total_correct": true,
+        "needs_review": true,
+        "review_reasons": [
+          "handwriting_detected: document contains cursive handwriting or signature that may require human review",
+          "table_uncertain: table grid could not be reconstructed with high geometric confidence"
+        ],
+        "reconciled": true,
+        "table_count": 1,
+        "deterministic": true
+      },
+      "real_inv_06.png": {
+        "wall_ms": 740.48,
+        "vendor_expected": "Smart Systems",
+        "vendor_extracted": "Smart Systems",
+        "vendor_correct": true,
+        "total_expected": "29654.58",
+        "total_extracted": "\u20b9 29654.58",
+        "total_correct": true,
+        "needs_review": true,
+        "review_reasons": [
+          "handwriting_detected: document contains cursive handwriting or signature that may require human review",
+          "table_uncertain: table grid could not be reconstructed with high geometric confidence"
+        ],
+        "reconciled": true,
+        "table_count": 1,
+        "deterministic": true
+      },
+      "real_inv_07.png": {
+        "wall_ms": 837.14,
+        "vendor_expected": "Innovatex Pvt Ltd",
+        "vendor_extracted": "Innovatex Pvt Ltd",
+        "vendor_correct": true,
+        "total_expected": "40418.54",
+        "total_extracted": "\u20b9 40418.54",
+        "total_correct": true,
+        "needs_review": true,
+        "review_reasons": [
+          "handwriting_detected: document contains cursive handwriting or signature that may require human review",
+          "table_uncertain: table grid could not be reconstructed with high geometric confidence"
+        ],
+        "reconciled": true,
+        "table_count": 1,
+        "deterministic": true
+      },
+      "real_inv_08.png": {
+        "wall_ms": 784.72,
+        "vendor_expected": "NextGen Tech",
+        "vendor_extracted": "NextGen Tech",
+        "vendor_correct": true,
+        "total_expected": "55661.78",
+        "total_extracted": "\u20b9 55661.78",
+        "total_correct": true,
+        "needs_review": true,
+        "review_reasons": [
+          "handwriting_detected: document contains cursive handwriting or signature that may require human review",
+          "table_uncertain: table grid could not be reconstructed with high geometric confidence"
+        ],
+        "reconciled": true,
+        "table_count": 1,
+        "deterministic": true
+      },
+      "real_inv_09.png": {
+        "wall_ms": 743.52,
+        "vendor_expected": "TechCorp India",
+        "vendor_extracted": "TechCorp India",
+        "vendor_correct": true,
+        "total_expected": "49643.78",
+        "total_extracted": "\u20b9 49643.78",
+        "total_correct": true,
+        "needs_review": true,
+        "review_reasons": [
+          "handwriting_detected: document contains cursive handwriting or signature that may require human review",
+          "table_uncertain: table grid could not be reconstructed with high geometric confidence"
+        ],
+        "reconciled": true,
+        "table_count": 1,
+        "deterministic": true
+      },
+      "real_inv_10.png": {
+        "wall_ms": 681.03,
+        "vendor_expected": "Global Solutions",
+        "vendor_extracted": "Global Solutions",
+        "vendor_correct": true,
+        "total_expected": "55266.48",
+        "total_extracted": "\u20b9 55266.48",
+        "total_correct": true,
+        "needs_review": true,
+        "review_reasons": [
+          "handwriting_detected: document contains cursive handwriting or signature that may require human review",
+          "table_uncertain: table grid could not be reconstructed with high geometric confidence"
+        ],
+        "reconciled": true,
+        "table_count": 1,
+        "deterministic": true
+      },
+      "real_rcpt_000.jpg": {
+        "wall_ms": 910.75,
+        "vendor_expected": "BOOK TA .K (TAMAN DAYA) SDN BHD",
+        "vendor_extracted": "DAYA) SDN BHD",
+        "vendor_correct": false,
+        "total_expected": "9.00",
+        "total_extracted": "9.60",
+        "total_correct": false,
+        "needs_review": true,
+        "review_reasons": [
+          "handwriting_detected: document contains cursive handwriting or signature that may require human review"
+        ],
+        "reconciled": false,
+        "table_count": 1,
+        "deterministic": true
+      },
+      "real_rcpt_001.jpg": {
+        "wall_ms": 1183.39,
+        "vendor_expected": "INDAH GIFT & HOME DECO",
+        "vendor_extracted": "GIFT & HOME BECO",
+        "vendor_correct": false,
+        "total_expected": "60.30",
+        "total_extracted": "2.00",
+        "total_correct": false,
+        "needs_review": true,
+        "review_reasons": [
+          "handwriting_detected: document contains cursive handwriting or signature that may require human review"
+        ],
+        "reconciled": false,
+        "table_count": 2,
+        "deterministic": true
+      },
+      "real_rcpt_002.jpg": {
+        "wall_ms": 1217.74,
+        "vendor_expected": "MR D.I.Y. (JOHOR) SDN BHD",
+        "vendor_extracted": "MR O.1.\u00a5. (JOHOR) SDN BHD",
+        "vendor_correct": false,
+        "total_expected": "33.90",
+        "total_extracted": "33.90",
+        "total_correct": true,
+        "needs_review": true,
+        "review_reasons": [
+          "handwriting_detected: document contains cursive handwriting or signature that may require human review"
+        ],
+        "reconciled": false,
+        "table_count": 2,
+        "deterministic": true
+      },
+      "real_rcpt_003.jpg": {
+        "wall_ms": 1250.87,
+        "vendor_expected": "YONGFATT ENTERPRISE",
+        "vendor_extracted": "YONGFATT ENTERPRISE",
+        "vendor_correct": true,
+        "total_expected": "80.90",
+        "total_extracted": "80.91",
+        "total_correct": true,
+        "needs_review": true,
+        "review_reasons": [
+          "handwriting_detected: document contains cursive handwriting or signature that may require human review"
+        ],
+        "reconciled": false,
+        "table_count": 3,
+        "deterministic": true
+      },
+      "real_rcpt_004.jpg": {
+        "wall_ms": 1357.55,
+        "vendor_expected": "MR D.I.Y. (M) SDN BHD",
+        "vendor_extracted": "(M4) SON BHD",
+        "vendor_correct": false,
+        "total_expected": "30.90",
+        "total_extracted": "30.90",
+        "total_correct": true,
+        "needs_review": true,
+        "review_reasons": [
+          "handwriting_detected: document contains cursive handwriting or signature that may require human review",
+          "table_uncertain: table grid could not be reconstructed with high geometric confidence"
+        ],
+        "reconciled": false,
+        "table_count": 2,
+        "deterministic": true
+      },
+      "real_stmt_01.png": {
+        "wall_ms": 4874.74,
+        "vendor_expected": "M/S.COSMOS ENTERPRISES",
+        "vendor_extracted": null,
+        "vendor_correct": false,
+        "total_expected": "27314.45",
+        "total_extracted": "24314.45",
+        "total_correct": false,
+        "needs_review": true,
+        "review_reasons": [
+          "handwriting_detected: document contains cursive handwriting or signature that may require human review",
+          "table_uncertain: table grid could not be reconstructed with high geometric confidence"
+        ],
+        "reconciled": true,
+        "table_count": 4,
+        "deterministic": true
+      },
+      "real_stmt_02.png": {
+        "wall_ms": 2453.75,
+        "vendor_expected": "John Doe",
+        "vendor_extracted": null,
+        "vendor_correct": false,
+        "total_expected": "3227.13",
+        "total_extracted": "2807.96",
+        "total_correct": false,
+        "needs_review": true,
+        "review_reasons": [
+          "statement_reconciliation_failed: opening (1000.00) + deposits (3100.42) - withdrawals (2791.89) = 1308.53, closing is 2807.96"
+        ],
+        "reconciled": false,
+        "table_count": 1,
+        "deterministic": true
+      },
+      "real_form_01.png": {
+        "wall_ms": 1591.59,
+        "vendor_expected": null,
+        "vendor_extracted": null,
+        "vendor_correct": null,
+        "total_expected": null,
+        "total_extracted": null,
+        "total_correct": null,
+        "needs_review": false,
+        "review_reasons": [],
+        "reconciled": null,
+        "table_count": 0,
+        "deterministic": true
+      },
+      "real_form_02.png": {
+        "wall_ms": 1962.6,
+        "vendor_expected": null,
+        "vendor_extracted": null,
+        "vendor_correct": null,
+        "total_expected": null,
+        "total_extracted": null,
+        "total_correct": null,
+        "needs_review": true,
+        "review_reasons": [
+          "table_uncertain: table grid could not be reconstructed with high geometric confidence"
+        ],
+        "reconciled": null,
+        "table_count": 6,
+        "deterministic": true
+      },
+      "real_id_01.jpg": {
+        "wall_ms": 398.31,
+        "vendor_expected": null,
+        "vendor_extracted": null,
+        "vendor_correct": null,
+        "total_expected": null,
+        "total_extracted": null,
+        "total_correct": null,
+        "needs_review": true,
+        "review_reasons": [
+          "handwriting_detected: document contains cursive handwriting or signature that may require human review"
+        ],
+        "reconciled": null,
+        "table_count": 1,
+        "deterministic": true
+      },
+      "real_handwriting_01.png": {
+        "wall_ms": 2438.03,
+        "vendor_expected": null,
+        "vendor_extracted": null,
+        "vendor_correct": null,
+        "total_expected": null,
+        "total_extracted": null,
+        "total_correct": null,
+        "needs_review": true,
+        "review_reasons": [
+          "handwriting_detected: document contains cursive handwriting or signature that may require human review"
+        ],
+        "reconciled": null,
+        "table_count": 1,
+        "deterministic": true
+      },
+      "real_column_01.png": {
+        "wall_ms": 2861.95,
+        "vendor_expected": null,
+        "vendor_extracted": null,
+        "vendor_correct": null,
+        "total_expected": null,
+        "total_extracted": null,
+        "total_correct": null,
+        "needs_review": false,
+        "review_reasons": [],
+        "reconciled": null,
+        "table_count": 2,
+        "deterministic": true
+      },
+      "real_menu_01.png": {
+        "wall_ms": 466.68,
+        "vendor_expected": null,
+        "vendor_extracted": null,
+        "vendor_correct": null,
+        "total_expected": null,
+        "total_extracted": null,
+        "total_correct": null,
+        "needs_review": true,
+        "review_reasons": [
+          "missing_total_amount: document contains monetary figures but no verified grand total"
+        ],
+        "reconciled": null,
+        "table_count": 2,
+        "deterministic": true
+      },
+      "real_sample_smoke.pdf": {
+        "wall_ms": 625.87,
+        "vendor_expected": null,
+        "vendor_extracted": null,
+        "vendor_correct": null,
+        "total_expected": "12345.00",
+        "total_extracted": "12345 rupees.",
+        "total_correct": true,
+        "needs_review": false,
+        "review_reasons": [],
+        "reconciled": null,
+        "table_count": 1,
+        "deterministic": true
+      }
+    }
+  }
+}

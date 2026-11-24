@@ -75,7 +75,10 @@ pub fn preset_forms() -> BTreeMap<String, Value> {
             "vendor_name": {"type": "string"},
             "invoice_number": {"type": "string"},
             "date": {"type": "string"},
-            "total_amount": {"type": "string"}
+            "total_amount": {"type": "string"},
+            "subtotal": {"type": "string"},
+            "tax_amount": {"type": "string"},
+            "gstin": {"type": "string"}
         }),
     );
     map.insert(
@@ -401,6 +404,44 @@ impl OCREngine {
         }
 
         let (width, height) = rgb.dimensions();
+        let page_type = classification.document_type.as_str();
+        let is_indian = text.contains('₹') || text.to_uppercase().contains("GST") || text.to_uppercase().contains("INR");
+
+        let validation = if page_type == "bank_statement" {
+            let v = validate_bank_statement_arithmetic(&tables, is_indian);
+            if v.needs_review {
+                needs_review = true;
+                review_reasons.extend(v.review_reasons.clone());
+            }
+            Some(v)
+        } else if page_type == "invoice" || page_type == "receipt" {
+            let dummy_schema = preset_forms().remove(page_type).unwrap_or_else(|| json!({}));
+            let grounded = extract_grounded_form(&dummy_schema, &text, &lines, &classification, if fast_path { "fast_document_tsv" } else { "mirage_native" });
+            let subtotal_str = grounded.get("subtotal").and_then(|v| v.get("value")).and_then(|v| v.as_str());
+            let tax_str = grounded.get("tax").or_else(|| grounded.get("tax_amount")).and_then(|v| v.get("value")).and_then(|v| v.as_str());
+            let total_str = grounded.get("total_amount").or_else(|| grounded.get("total")).and_then(|v| v.get("value")).and_then(|v| v.as_str());
+            let v = validate_invoice_arithmetic(&lines, &tables, subtotal_str, tax_str, total_str, is_indian);
+            if v.needs_review {
+                needs_review = true;
+                review_reasons.extend(v.review_reasons.clone());
+            }
+            Some(v)
+        } else {
+            None
+        };
+
+        // Guarantee zero silent money errors: If financial document (or any page containing multiple money figures) has no verified total, flag for review
+        let has_money_figures = !entities.amounts.is_empty() || text.contains('₹') || text.contains('$') || text.contains("Rs.") || text.contains("INR");
+        let is_financial_doc = page_type == "invoice" || page_type == "receipt" || page_type == "bank_statement";
+
+        if (is_financial_doc || (has_money_figures && entities.amounts.len() >= 2))
+            && validation.as_ref().map(|v| v.total_extracted.is_none()).unwrap_or(true)
+        {
+            needs_review = true;
+            if !review_reasons.iter().any(|r| r.starts_with("missing_total_amount")) {
+                review_reasons.push("missing_total_amount: document contains monetary figures but no verified grand total".to_string());
+            }
+        }
 
         Ok(json!({
             "text": text,
@@ -410,8 +451,13 @@ impl OCREngine {
             "entities": entities,
             "artifacts": artifacts,
             "checkboxes": artifacts.checkboxes,
+            "validation": validation,
             "needs_review": needs_review,
-            "review_reasons": review_reasons,
+            "review_reasons": review_reasons.clone(),
+            "review": {
+                "needs_review": needs_review,
+                "reasons": review_reasons
+            },
             "meta": {
                 "width": width,
                 "height": height,
@@ -419,6 +465,7 @@ impl OCREngine {
                 "table_count": tables.len(),
                 "tiled": tiled,
                 "tiles_processed": tiles_count,
+                "engine": if fast_path { "fast_document_tsv" } else { "mirage_native" },
                 "fast_path": fast_path,
                 "elapsed_ms": elapsed_ms
             }
@@ -438,12 +485,12 @@ impl OCREngine {
         let t0 = Instant::now();
 
         // Stage 1: Try fast document OCR (TSV) first; fall back to Mirage single pass
-        let (lines, word_boxes_opt) = if let Ok(Some((f_lines, f_words))) =
+        let (lines, word_boxes_opt, engine_name) = if let Ok(Some((f_lines, f_words))) =
             run_fast_document_ocr(rgb, language)
         {
-            (f_lines, Some(f_words))
+            (f_lines, Some(f_words), "fast_document_tsv")
         } else {
-            (self.ocr_single_rgb(rgb, 0.3, 32, language, keywords)?, None)
+            (self.ocr_single_rgb(rgb, 0.3, 32, language, keywords)?, None, "mirage_native")
         };
 
         let text = lines
@@ -462,7 +509,7 @@ impl OCREngine {
             extract_tables_from_lines(&lines)
         };
         let classification = classify_page(&text, &lines, &tables, false);
-        let mut grounded = extract_grounded_form(form, &text, &lines, &classification);
+        let mut grounded = extract_grounded_form(form, &text, &lines, &classification, engine_name);
 
         // Stage 2: Only consult native model form decoder for non-text/visual scenes or unresolved
         // non-standard fields, strictly confidence-gated (>= 0.55) and echo-filtered.
@@ -551,20 +598,37 @@ impl OCREngine {
             None
         };
 
+        if (schema_obj.contains_key("total_amount") || schema_obj.contains_key("total") || page_type == "invoice" || page_type == "receipt")
+            && validation.as_ref().map(|v| v.total_extracted.is_none()).unwrap_or(true)
+        {
+            needs_review = true;
+            if !review_reasons.iter().any(|r| r.starts_with("missing_total_amount")) {
+                review_reasons.push("missing_total_amount: document has no verified grand total".to_string());
+            }
+        }
+
         Ok(json!({
             "fields": { "form": grounded },
             "classification": classification,
             "text": text,
             "lines": lines,
+            "tables": tables,
             "artifacts": artifacts,
             "checkboxes": artifacts.checkboxes,
             "validation": validation,
             "needs_review": needs_review,
-            "review_reasons": review_reasons,
+            "review_reasons": review_reasons.clone(),
+            "review": {
+                "needs_review": needs_review,
+                "reasons": review_reasons
+            },
             "meta": {
                 "width": width,
                 "height": height,
                 "line_count": lines.len(),
+                "table_count": tables.len(),
+                "engine": engine_name,
+                "fast_path": engine_name == "fast_document_tsv",
                 "elapsed_ms": round2(t0.elapsed().as_secs_f64() * 1000.0)
             }
         }))
@@ -802,7 +866,7 @@ impl OCREngine {
                 let fields_val = if opts.mode == "form" {
                     resolved_form
                         .as_ref()
-                        .map(|schema| json!({ "form": extract_grounded_form(schema, &np.text, &np.lines, &classification) }))
+                        .map(|schema| json!({ "form": extract_grounded_form(schema, &np.text, &np.lines, &classification, "pdf_native") }))
                         .unwrap_or(Value::Null)
                 } else {
                     Value::Null
@@ -860,6 +924,9 @@ impl OCREngine {
                     "fields": res.get("fields").cloned().unwrap_or(Value::Null),
                     "scene": res.get("scene").cloned().unwrap_or(Value::Null),
                     "objects": res.get("objects").cloned().unwrap_or(Value::Null),
+                    "needs_review": res.get("needs_review").cloned().unwrap_or(json!(false)),
+                    "review_reasons": res.get("review_reasons").cloned().unwrap_or_else(|| json!([])),
+                    "validation": res.get("validation").cloned().unwrap_or(Value::Null),
                     "auto_route": format!("pdf_{}", res["meta"]["auto_route"].as_str().unwrap_or(&opts.mode)),
                     "elapsed_ms": round2(pt0.elapsed().as_secs_f64() * 1000.0)
                 }));
@@ -909,7 +976,11 @@ impl OCREngine {
             "tables": all_tables,
             "classification": first_class,
             "needs_review": pdf_needs_review,
-            "review_reasons": pdf_review_reasons,
+            "review_reasons": pdf_review_reasons.clone(),
+            "review": {
+                "needs_review": pdf_needs_review,
+                "reasons": pdf_review_reasons
+            },
             "meta": {
                 "is_pdf": true,
                 "page_count": page_results.len(),

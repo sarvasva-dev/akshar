@@ -87,4 +87,30 @@ if [ ! -f "$TESS_DIR/hin.traineddata" ]; then
   echo "Installed $TESS_DIR/hin.traineddata"
 fi
 
+# Check system dependencies for fast paths (TSV OCR and Native PDF text)
+MISSING_DEPS=""
+if ! command -v tesseract >/dev/null 2>&1; then
+  MISSING_DEPS="tesseract-ocr $MISSING_DEPS"
+fi
+if ! command -v pdftotext >/dev/null 2>&1; then
+  MISSING_DEPS="poppler-utils $MISSING_DEPS"
+fi
+
+if [ -n "$MISSING_DEPS" ]; then
+  echo ""
+  echo "----------------------------------------------------------------------"
+  echo "NOTICE: Optional high-speed tools missing: $MISSING_DEPS"
+  echo "Akshar uses Tesseract TSV for ~120ms scanned OCR and pdftotext for ~3ms PDF text."
+  echo "Install commands:"
+  echo "  Debian/Ubuntu: sudo apt-get update && sudo apt-get install -y tesseract-ocr poppler-utils"
+  echo "  macOS (Homebrew): brew install tesseract poppler"
+  echo "  Arch Linux:    sudo pacman -S tesseract poppler"
+  echo "  Fedora/RHEL:   sudo dnf install -y tesseract poppler-utils"
+  echo "Without these, Akshar transparently falls back to Mirage native engine."
+  echo "----------------------------------------------------------------------"
+  echo ""
+else
+  echo "All system dependencies detected (tesseract, pdftotext)."
+fi
+
 echo "Assets ready."
