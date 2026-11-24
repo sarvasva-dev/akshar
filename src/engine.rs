@@ -13,7 +13,8 @@ use std::time::Instant;
 use crate::classify::classify_page;
 use crate::config::{resolve_engine_path, resolve_model_path};
 use crate::extract::{
-    extract_grounded_form, extract_intelligence, normalize_ocr_line, sanitize_model_form_field,
+    extract_grounded_form, extract_intelligence, normalize_ocr_line, repair_indian_currency_lines,
+    sanitize_model_form_field,
 };
 use crate::pdf::{
     extract_native_pdf_pages, is_pdf_bytes, is_pdf_path, render_single_pdf_page,
@@ -22,6 +23,7 @@ use crate::preprocess::enhance_for_ocr;
 use crate::redact::{RedactStyle, RedactionSummary, redact_image};
 use crate::table::{extract_tables_from_lines, extract_tables_from_words};
 use crate::tiling::{OCRLine, deduplicate_lines, run_tiled_ocr};
+use crate::tsv::run_fast_document_ocr;
 
 const VISION_BIT: c_int = 4;
 const OUT_BUFFER_CAPACITY: usize = 16 * 1024 * 1024;
@@ -329,6 +331,7 @@ impl OCREngine {
                 });
             }
         }
+        repair_indian_currency_lines(&mut lines);
         Ok(deduplicate_lines(lines))
     }
 
@@ -343,18 +346,21 @@ impl OCREngine {
         tile_height: Option<u32>,
     ) -> Result<Value> {
         let t0 = Instant::now();
-        let (lines, tiles_count) = if tiled {
-            run_tiled_ocr(
+        let (lines, word_boxes_opt, tiles_count, fast_path) = if !tiled {
+            if let Ok(Some((f_lines, f_words))) = run_fast_document_ocr(rgb, language) {
+                (f_lines, Some(f_words), 1, true)
+            } else {
+                let l = self.ocr_single_rgb(rgb, text_conf, max_lines, language, keywords)?;
+                (l, None, 1, false)
+            }
+        } else {
+            let (l, cnt) = run_tiled_ocr(
                 rgb,
                 |strip| self.ocr_single_rgb(strip, text_conf, 32, language, keywords),
                 tile_height,
                 0.22,
-            )?
-        } else {
-            (
-                self.ocr_single_rgb(rgb, text_conf, max_lines, language, keywords)?,
-                1,
-            )
+            )?;
+            (l, None, cnt, false)
         };
 
         let elapsed_ms = round2(t0.elapsed().as_secs_f64() * 1000.0);
@@ -364,7 +370,16 @@ impl OCREngine {
             .collect::<Vec<_>>()
             .join("\n");
         let entities = extract_intelligence(&text, &lines);
-        let tables = extract_tables_from_lines(&lines);
+        let tables = if let Some(ref wb) = word_boxes_opt {
+            let tw = extract_tables_from_words(wb);
+            if !tw.is_empty() {
+                tw
+            } else {
+                extract_tables_from_lines(&lines)
+            }
+        } else {
+            extract_tables_from_lines(&lines)
+        };
         let classification = classify_page(&text, &lines, &tables, false);
         let (width, height) = rgb.dimensions();
 
@@ -381,6 +396,7 @@ impl OCREngine {
                 "table_count": tables.len(),
                 "tiled": tiled,
                 "tiles_processed": tiles_count,
+                "fast_path": fast_path,
                 "elapsed_ms": elapsed_ms
             }
         }))
@@ -398,14 +414,30 @@ impl OCREngine {
         };
         let t0 = Instant::now();
 
-        // Stage 1: OCR-grounded deterministic extraction (accurate values + honest null on missing fields)
-        let lines = self.ocr_single_rgb(rgb, 0.3, 32, language, keywords)?;
+        // Stage 1: Try fast document OCR (TSV) first; fall back to Mirage single pass
+        let (lines, word_boxes_opt) = if let Ok(Some((f_lines, f_words))) =
+            run_fast_document_ocr(rgb, language)
+        {
+            (f_lines, Some(f_words))
+        } else {
+            (self.ocr_single_rgb(rgb, 0.3, 32, language, keywords)?, None)
+        };
+
         let text = lines
             .iter()
             .map(|l| l.text.as_str())
             .collect::<Vec<_>>()
             .join("\n");
-        let tables = extract_tables_from_lines(&lines);
+        let tables = if let Some(ref wb) = word_boxes_opt {
+            let tw = extract_tables_from_words(wb);
+            if !tw.is_empty() {
+                tw
+            } else {
+                extract_tables_from_lines(&lines)
+            }
+        } else {
+            extract_tables_from_lines(&lines)
+        };
         let classification = classify_page(&text, &lines, &tables, false);
         let mut grounded = extract_grounded_form(form, &text, &lines, &classification);
 
@@ -590,14 +622,15 @@ impl OCREngine {
             }
             _ => {
                 // Adaptive `auto` routing:
-                // 1) Fast single pass first (~4.5s vs 14s for 3 tiles).
+                // 1) Fast single pass first (~120ms with TSV or ~4.5s with single Mirage pass).
                 // 2) Only escalate to full-page tiled OCR when a tall page actually hits dense text
-                //    (>= 22 lines, approaching the model's 32-line ceiling).
+                //    (>= 22 lines) AND wasn't already resolved by the fast document OCR path.
                 // 3) If 0 text lines found, fall back to Scene & Objects description.
                 let mut res = self.ocr_rgb(img, opts.text_conf, 32, &opts.language, &opts.keywords, false, None)?;
                 let line_count = res["meta"]["line_count"].as_u64().unwrap_or(0);
                 let (w, h) = img.dimensions();
-                let is_tall_dense = h > 1100 && (h as f64) / (w.max(1) as f64) >= 1.35 && line_count >= 22;
+                let fast = res["meta"]["fast_path"].as_bool().unwrap_or(false);
+                let is_tall_dense = !fast && h > 1100 && (h as f64) / (w.max(1) as f64) >= 1.35 && line_count >= 22;
 
                 if is_tall_dense {
                     let mut tiled_res = self.ocr_rgb(img, opts.text_conf, 32, &opts.language, &opts.keywords, true, None)?;
@@ -607,7 +640,8 @@ impl OCREngine {
                 }
 
                 if line_count > 0 {
-                    res["meta"]["auto_route"] = json!("standard_ocr");
+                    let route = if fast { "fast_document_ocr" } else { "standard_ocr" };
+                    res["meta"]["auto_route"] = json!(route);
                     return Ok(res);
                 }
 
@@ -631,17 +665,22 @@ impl OCREngine {
         let orig = decode_rgb_bytes(data)?;
         let ocr_img = if enhance { enhance_for_ocr(&orig) } else { orig.clone() };
         let (w, h) = ocr_img.dimensions();
-        let tiled = h > 1100 && (h as f64) / (w.max(1) as f64) >= 1.35;
-        let lines = if tiled {
-            run_tiled_ocr(
-                &ocr_img,
-                |strip| self.ocr_single_rgb(strip, 0.25, 32, language, &[]),
-                None,
-                0.22,
-            )?
-            .0
+
+        let lines = if let Ok(Some((f_lines, _))) = run_fast_document_ocr(&ocr_img, language) {
+            f_lines
         } else {
-            self.ocr_single_rgb(&ocr_img, 0.25, 32, language, &[])?
+            let tiled = h > 1100 && (h as f64) / (w.max(1) as f64) >= 1.35;
+            if tiled {
+                run_tiled_ocr(
+                    &ocr_img,
+                    |strip| self.ocr_single_rgb(strip, 0.25, 32, language, &[]),
+                    None,
+                    0.22,
+                )?
+                .0
+            } else {
+                self.ocr_single_rgb(&ocr_img, 0.25, 32, language, &[])?
+            }
         };
         let (redacted_img, summary) = redact_image(&orig, &lines, custom_terms, style);
         let mut out_png = std::io::Cursor::new(Vec::new());

@@ -68,7 +68,7 @@ pub fn normalize_ocr_line(input: &str) -> String {
     let re_upper_o = RE_UPPER_O.get_or_init(|| Regex::new(r"([A-Z]{2,})o([A-Z]{2,})").unwrap());
 
     let mut s = input.trim().to_string();
-    // Fix O/o inside numbers (`50O0` -> `5000`, `87.o0` -> `87.00`, `40o` -> `400`)
+    // Fix O/o inside numbers (`50O0` -> `5000`, `87.o0` -> `87.00`, `40o` -> `400`, `(40o)` -> `(400)`)
     for _ in 0..3 {
         let next = re_num_o.replace_all(&s, "${1}0${2}").into_owned();
         if next == s {
@@ -77,9 +77,93 @@ pub fn normalize_ocr_line(input: &str) -> String {
         s = next;
     }
     s = re_num_trail.replace_all(&s, "${1}0").into_owned();
+    static RE_PAREN_O: OnceLock<Regex> = OnceLock::new();
+    let re_paren_o = RE_PAREN_O.get_or_init(|| Regex::new(r"(\d)[oO]([)\]\.,;:])").unwrap());
+    s = re_paren_o.replace_all(&s, "${1}0${2}").into_owned();
     // Fix lowercase `o` surrounded by ALL-CAPS letters (`INVoICE` -> `INVOICE`)
     s = re_upper_o.replace_all(&s, "${1}O${2}").into_owned();
     s
+}
+
+/// Detect Mirage CTC garbled non-Latin / shirorekha lines (e.g. `IIL•NLLNNLVNL•R•I•I•`).
+pub fn is_garbled_ctc_line(text: &str, confidence: f64) -> bool {
+    let t = text.trim();
+    if t.is_empty() {
+        return true;
+    }
+    let bullets = t.chars().filter(|&c| matches!(c, '•' | '·' | '|')).count();
+    if bullets >= 2 {
+        return true;
+    }
+    let upper_i_l_n = t
+        .chars()
+        .filter(|&c| matches!(c, 'I' | 'L' | 'N' | 'V' | '•'))
+        .count();
+    if t.len() >= 8 && upper_i_l_n * 100 / t.chars().count().max(1) >= 65 {
+        return true;
+    }
+    confidence < 0.36 && !t.chars().any(|c| c.is_ascii_digit())
+}
+
+/// Context-aware `₹` (Indian Rupee) recovery across OCR lines.
+/// Repairs Mirage/Tesseract substitutions (`r340`, `T60`, `¥ 12,345.00`, and `$280` in Indian contexts) to `₹`.
+pub fn repair_indian_currency_lines(lines: &mut Vec<OCRLine>) {
+    static RE_RT_PRICE: OnceLock<Regex> = OnceLock::new();
+    static RE_YEN_PRICE: OnceLock<Regex> = OnceLock::new();
+    static RE_DOLLAR_PRICE: OnceLock<Regex> = OnceLock::new();
+    static RE_EQUALS_PRICE: OnceLock<Regex> = OnceLock::new();
+
+    let re_rt = RE_RT_PRICE.get_or_init(|| {
+        Regex::new(r"\b[rT](\d{2,6}(?:,\d{2,3})*(?:\.\d{1,2})?)\b").unwrap()
+    });
+    let re_yen = RE_YEN_PRICE.get_or_init(|| {
+        Regex::new(r"(?:¥|हैं)\s*(\d[\d,]*(?:\.\d{1,2})?)").unwrap()
+    });
+    let re_dollar = RE_DOLLAR_PRICE.get_or_init(|| {
+        Regex::new(r"\$\s*(\d{2,6}(?:,\d{2,3})*(?:\.\d{1,2})?)\b").unwrap()
+    });
+    let re_equals = RE_EQUALS_PRICE.get_or_init(|| {
+        Regex::new(r"(?:=|\bINR\b)\s*(\d[\d,]*(?:\.\d{1,2})?)").unwrap()
+    });
+
+    // Drop pure shirorekha bullet garbage lines
+    lines.retain(|l| {
+        let bullets = l.text.chars().filter(|&c| c == '•').count();
+        !(bullets >= 3 && l.confidence < 0.45)
+    });
+
+    let full_lower = lines
+        .iter()
+        .map(|l| l.text.to_lowercase())
+        .collect::<Vec<_>>()
+        .join("\n");
+
+    let has_rt_or_yen = lines
+        .iter()
+        .any(|l| re_rt.is_match(&l.text) || re_yen.is_match(&l.text) || l.text.contains('₹') || re_equals.is_match(&l.text));
+
+    let is_indian_context = has_rt_or_yen
+        || full_lower.chars().any(|c| ('\u{0900}'..='\u{097F}').contains(&c))
+        || [
+            "gst", "cgst", "sgst", "igst", "inr", "rupee", "rs.", "pvt ltd", "india", "+91",
+            "aadhaar", "pan", "upi", "naan", "paneer", "tandoori", "masala", "biryani", "roti",
+            "dal", "thali", "kulcha", "paratha", "items selected", "tax invoice", "total amount",
+        ]
+        .iter()
+        .any(|kw| full_lower.contains(kw));
+
+    for ln in lines.iter_mut() {
+        ln.text = normalize_ocr_line(&ln.text);
+        // Avoid turning flight/gate/terminal codes like "T3" into "₹3" (re_rt requires >= 2 digits)
+        if !ln.text.to_uppercase().contains("FLIGHT") && !ln.text.to_uppercase().contains("TERMINAL") {
+            ln.text = re_rt.replace_all(&ln.text, "₹$1").into_owned();
+        }
+        ln.text = re_yen.replace_all(&ln.text, "₹$1").into_owned();
+        if is_indian_context && !full_lower.contains("usd") {
+            ln.text = re_dollar.replace_all(&ln.text, "₹$1").into_owned();
+            ln.text = re_equals.replace_all(&ln.text, "₹$1").into_owned();
+        }
+    }
 }
 
 /// Grounded, deterministic structured extraction directly from verified OCR/native text.
@@ -247,14 +331,24 @@ fn extract_total_amount(lines: &[&str], entities: &ExtractedEntities) -> Option<
         Regex::new(r"(?i)(?:₹|rs\.?|inr|\$|usd|€|eur|£|gbp)?\s*\d[\d,]*(?:\.\d{1,2})?(?:\s*(?:rupees?|inr|usd|eur|gbp|rs\.?))?").unwrap()
     });
 
-    // Prefer lines explicitly mentioning total / amount due / balance due (bottom-up for grand total)
-    for line in lines.iter().rev() {
+    // Check reconstructed rows first (merges 2-column "GRAND TOTAL   ₹ 736.91")
+    let recon_lines: Vec<&str> = entities
+        .reconstructed_text
+        .lines()
+        .map(str::trim)
+        .filter(|l| !l.is_empty())
+        .collect();
+    let search_pool = if recon_lines.is_empty() { lines } else { &recon_lines };
+
+    for (idx, line) in search_pool.iter().enumerate().rev() {
         let low = line.to_ascii_lowercase();
         if low.contains("grand total")
             || low.contains("total amount")
             || low.contains("amount due")
             || low.contains("balance due")
             || low.contains("net payable")
+            || low.contains("total payable")
+            || low.contains("कुल राशि")
             || low.starts_with("total")
         {
             if let Some(m) = re_amount().find(line) {
@@ -264,6 +358,15 @@ fn extract_total_amount(lines: &[&str], entities: &ExtractedEntities) -> Option<
                 let s = m.as_str().trim();
                 if s.chars().any(|c| c.is_ascii_digit()) {
                     return Some(s.to_string());
+                }
+            }
+            // Check immediately following line if label and amount were split vertically
+            if let Some(next_line) = search_pool.get(idx + 1) {
+                if let Some(m) = re_amount().find(next_line).or_else(|| re_num.find(next_line)) {
+                    let s = m.as_str().trim();
+                    if s.chars().any(|c| c.is_ascii_digit()) {
+                        return Some(s.to_string());
+                    }
                 }
             }
         }
@@ -279,7 +382,7 @@ fn extract_labeled_code(lines: &[&str], prefixes: &[&str]) -> Option<String> {
         for pref in prefixes {
             if let Some(pos) = low.find(pref) {
                 let rest = &line[pos + pref.len()..];
-                let trimmed = rest.trim_start_matches([':', '#', ' ', '.']);
+                let trimmed = rest.trim_start_matches([':', '#', ' ', '.', '-']);
                 if let Some(m) = re_code.find(trimmed) {
                     let s = m.as_str();
                     if s.chars().any(|c| c.is_ascii_digit()) {
@@ -293,29 +396,48 @@ fn extract_labeled_code(lines: &[&str], prefixes: &[&str]) -> Option<String> {
 }
 
 fn extract_vendor_header(lines: &[&str]) -> Option<String> {
-    let first = lines.first()?.trim();
-    let low = first.to_ascii_lowercase();
-    // Avoid mistaking "Total amount due: ..." or "INVOICE #123" for a vendor name
-    for bad in [
-        "invoice",
-        "receipt",
-        "total",
-        "amount",
-        "date",
-        "page ",
-        "tax ",
-        "bill to",
-        "balance",
-    ] {
-        if low.starts_with(bad) || low.contains("amount due") {
-            return None;
+    // 1. Explicit label on any line: "Vendor: ...", "Merchant: ...", "Seller: ..."
+    for line in lines.iter().take(8) {
+        let low = line.to_ascii_lowercase();
+        for pref in ["vendor:", "merchant:", "seller:", "billed by:", "supplier:", "company:"] {
+            if let Some(pos) = low.find(pref) {
+                let val = line[pos + pref.len()..].trim();
+                if val.len() >= 2 {
+                    return Some(val.to_string());
+                }
+            }
         }
     }
-    if first.len() >= 3 && first.len() <= 64 && first.chars().any(|c| c.is_alphabetic()) {
-        Some(first.to_string())
-    } else {
-        None
+
+    // 2. Top header lines (first 2 lines): require positive business-entity evidence and
+    //    reject generic page/document headers like "Scanned page", "Smoke Test", "INVOICE", etc.
+    const GENERIC_BANNED: &[&str] = &[
+        "scanned", "page", "smoke", "test", "sample", "document", "invoice", "receipt", "total",
+        "amount", "balance", "due", "date", "bill", "summary", "report", "table", "form",
+        "letter", "copy", "draft", "original", "customer", "client", "item", "qty", "price",
+        "tax ", "gstin", "quote", "estimate", "memo", "notice",
+    ];
+    const BUSINESS_MARKERS: &[&str] = &[
+        "ltd", "pvt", "limited", "inc", "llp", "corp", "co.", "company", "enterprises",
+        "solutions", "technologies", "tech", "systems", "services", "traders", "trading",
+        "store", "mart", "shop", "cafe", "restaurant", "hotel", "kitchen", "bistro", "pharmacy",
+        "clinic", "hospital", "labs", "motors", "logistics", "agency", "studio", "associates",
+        "group", "industries", "electronics", "foods", "retail", "bazaar", "udyog", "लिमिटेड",
+        "प्राइवेट", "स्टोर", "होटल",
+    ];
+
+    for candidate in lines.iter().take(2) {
+        let trimmed = candidate.trim();
+        let low = trimmed.to_lowercase();
+        if GENERIC_BANNED.iter().any(|b| low.contains(b)) {
+            continue;
+        }
+        let has_marker = BUSINESS_MARKERS.iter().any(|m| low.contains(m));
+        if has_marker && trimmed.len() >= 3 && trimmed.len() <= 72 {
+            return Some(trimmed.to_string());
+        }
     }
+    None
 }
 
 fn re_pan_or_aadhaar() -> &'static Regex {

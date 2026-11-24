@@ -1,0 +1,65 @@
+{
+  "hybrid_pdf": {
+    "wall_ms": 318.1877250008256,
+    "elapsed_ms": 260.79,
+    "pages": 3,
+    "native_pages": 2,
+    "ocr_pages": 1,
+    "route": "pdf_hybrid",
+    "total_lines": 23,
+    "table_count": 1
+  },
+  "scanned_p2": {
+    "wall_ms": 218.80620800038741,
+    "elapsed_ms": 155.61,
+    "line_count": 6,
+    "fast_path": true,
+    "route": "fast_document_ocr"
+  },
+  "p2_preset": {
+    "wall_ms": 209.968105000371,
+    "total_amount": "12345 rupees",
+    "total_conf": 0.92,
+    "vendor_name": null,
+    "doc_type": "invoice",
+    "doc_type_conf": 0.99
+  },
+  "gst_invoice": {
+    "wall_ms": 723.1037910005398,
+    "rupee_symbol_count": 6,
+    "has_rupee": true,
+    "vendor_name": "Apex Digital Solutions Pvt Ltd",
+    "total_amount": "\u20b9 12,390.00",
+    "doc_type": "invoice"
+  },
+  "hindi_bilingual": {
+    "wall_ms": 641.5026690010563,
+    "line_count": 11,
+    "has_devanagari": true,
+    "contains_sharma": true,
+    "contains_bijak": true
+  },
+  "table_recovery": {
+    "table_count": 1,
+    "headers": [
+      "Item Description Units Sold",
+      "Unit Price Subtotal"
+    ],
+    "row_count": 5,
+    "markdown": "| Item Description Units Sold | Unit Price Subtotal |\n| --- | --- |\n| Mechanical Keyboard 45 | \u20b9 3,500 \u20b9 157,500 |\n| Ergonomic Mouse 80 | \u20b9 1,200 X= 96,000 |\n| USB-C Dock Station 25 | \u20b9 4,800 120,000 |\n| IPS Gaming Monitor 18 | \u20b9 333,000 |\n| Total Hardware Revenue | \u20b9 706,500 |"
+  },
+  "resto_menu": {
+    "wall_ms": 241.10420400029398,
+    "rupee_count": 3,
+    "amounts_found": 3,
+    "classification": null
+  },
+  "determinism": {
+    "run1_eq_run2": true,
+    "run2_eq_run3": true,
+    "identical": true,
+    "sample_total": "12345 rupees"
+  },
+  "binary_size_bytes": 10161992,
+  "binary_size_mb": 9.69
+}

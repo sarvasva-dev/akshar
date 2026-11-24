@@ -24,19 +24,22 @@
 
 ---
 
-**Akshar** is a complete offline document processing suite compiled to a single Rust binary backed by a ~21 MB quantized vision model — no GPU, no cloud API keys, and zero data leaving your device.
+**Akshar** is a complete, ultra-fast offline document processing engine compiled to a single **9.7 MB** Rust binary. It combines a native PDF fast-path, high-resolution layout engine with Hindi/Devanagari and Indian Rupee (`₹`) recognition, and a ~21 MB quantized vision model — 100% local on CPU, 0 cloud API keys, and zero data leaving your device.
+
+> 🚀 **Benchmark Highlights:** Process a 3-page hybrid PDF in **318 ms** (110× faster than Mirage's 35 s) and scanned pages in **~200 ms** with 100% deterministic field grounding and zero hallucinations. See full verified numbers in [BENCHMARK.md](BENCHMARK.md).
 
 ## What Akshar Adds Beyond Raw OCR
 
-- **Native PDF fast path (~10 ms/page)** — extracts digital PDF text + exact word bounding boxes via `pdftotext -bbox-layout` without rasterizing; only scanned/image-only pages run through the vision model (10× faster on hybrid PDFs with byte-identical text).
-- **2D geometric table recovery** — clusters word/line coordinates into column matrices (`headers`, `rows`, `cells` with bounding boxes, and Markdown tables).
-- **Confidence-gated grounded extraction (`--preset` / `/v1/extract`)** — extracts fields directly from verified text with provenance and gates model fallbacks (`>= 0.55` + echo rejection), returning honest `null` when a field is absent instead of hallucinating field names.
-- **Deterministic page classification** — classifies each page (`invoice`, `receipt`, `table`, `id_card`, `letter`, `form`, `photo`, `document`, `other`) with confidence and explainable signals.
-- **Adaptive full-page tiled OCR** — single fast pass by default (~3× faster on normal A4 pages), automatically escalating to overlapping multi-tile OCR when dense text approaches single-pass caps (`40/40` lines at `99.91%` character accuracy).
-- **Auto-PII redaction (`--redact` / `/v1/redact`)** — detects emails, phone numbers, Aadhaar/PAN IDs, card numbers, and custom keywords, paints solid-black or pixelated boxes onto the image, and returns a safe PNG + masked text.
-- **Built-in SQLite FTS5 search (`--search` / `Ctrl+K`)** — automatically indexes every scanned image, PDF, and watched document locally (`data/akshar.db`) for instant full-text search with snippets.
-- **Scan pre-enhancement (`--enhance`)** — percentile contrast stretching + unsharp mask sharpening for blurry or low-contrast phone photos.
-- **Live folder watcher & webhooks** — monitors an inbox folder continuously, exports `.json`, `.txt`, `.md`, and `summary.csv`, archives processed files, and optionally triggers HTTP webhooks.
+- **Blazing Fast Hybrid Execution (318 ms vs 35 s)** — digital PDF pages run in ~3 ms via `pdftotext -bbox-layout`, scanned pages process in ~150–200 ms with word-level bounding boxes, and complex natural scene photos seamlessly fall back to Mirage vision.
+- **₹ (Rupee) & Devanagari Recognition** — resolves the hard vocabulary limit of Mirage (which lacks ₹ and Devanagari in its CTC reader) with context-aware currency repair and `hin+eng` confidence fusion.
+- **2D Geometric Table Recovery** — automatically clusters word/line coordinates into clean column matrices (`headers`, `rows`, `cells` with pixel bounding boxes, and Markdown tables).
+- **Confidence-Gated Grounded Extraction (`--preset` / `/v1/extract`)** — extracts fields directly from verified text with full provenance and gates model fallbacks (`>= 0.55` + echo rejection), returning honest `null` when a field is absent instead of hallucinating field names.
+- **Deterministic Page Classification** — classifies each page (`invoice`, `receipt`, `table`, `id_card`, `letter`, `form`, `photo`, `document`, `other`) with confidence and explainable signals.
+- **Adaptive Full-Page Tiled OCR** — single fast pass by default, automatically escalating to overlapping multi-tile OCR when dense text requires multi-strip processing.
+- **Auto-PII Redaction (`--redact` / `/v1/redact`)** — detects emails, phone numbers, Aadhaar/PAN IDs, card numbers, and custom keywords, paints solid-black or pixelated boxes onto the image, and returns a safe PNG + masked text.
+- **Built-in SQLite FTS5 Search (`--search` / `Ctrl+K`)** — automatically indexes every scanned image, PDF, and watched document locally (`data/akshar.db`) for instant full-text search with snippets.
+- **Scan Pre-Enhancement (`--enhance`)** — percentile contrast stretching + unsharp mask sharpening for blurry or low-contrast phone photos.
+- **Live Folder Watcher & Webhooks** — monitors an inbox folder continuously, exports `.json`, `.txt`, `.md`, and `summary.csv`, archives processed files, and optionally triggers HTTP webhooks.
 
 ## Quickstart
 

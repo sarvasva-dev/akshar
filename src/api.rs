@@ -456,7 +456,7 @@ async fn batch_endpoint(State(st): State<Arc<AppState>>, mp: Multipart) -> ApiRe
 
 #[derive(Deserialize)]
 struct SearchParams {
-    #[serde(default)]
+    #[serde(default, alias = "query")]
     q: String,
     #[serde(default = "default_limit")]
     limit: usize,

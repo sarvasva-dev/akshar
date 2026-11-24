@@ -10,6 +10,7 @@ pub mod preprocess;
 pub mod redact;
 pub mod table;
 pub mod tiling;
+pub mod tsv;
 
 pub use automation::{FolderWatcher, WatcherConfig};
 pub use classify::{PageClassification, classify_page};

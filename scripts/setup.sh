@@ -4,12 +4,17 @@ set -eu
 ROOT="$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)"
 ENGINE_DIR="$ROOT/assets/engine"
 MODEL_DIR="$ROOT/assets/models"
-mkdir -p "$ENGINE_DIR" "$MODEL_DIR"
+TESS_DIR="$ROOT/assets/tessdata"
+mkdir -p "$ENGINE_DIR" "$MODEL_DIR" "$TESS_DIR"
 
 ENGINE_VER="4.1.4"
 BASE_URL="https://huggingface.co/Cactus-Compute/cactus/resolve/main/releases/$ENGINE_VER/python"
 MODEL_URL="https://huggingface.co/Cactus-Compute/mirage/resolve/main/mirage.cact"
 MODEL_SHA="4249a0f7515272ff76b9414bec17d7e7daf84b15b66c7fb4f17fce1e66f9f237"
+
+TESS_BASE="https://github.com/tesseract-ocr/tessdata_fast/raw/main"
+ENG_SHA="7d4322bd2a7749724879683fc3912cb542f19906c83bcc1a52132556427170b2"
+HIN_SHA="4c73ffc59d497c186b19d1e90f5d721d678ea6b2e277b719bee4e2af12271825"
 
 OS="$(uname -s)"
 ARCH="$(uname -m)"
@@ -66,6 +71,20 @@ if [ ! -f "$MODEL_DIR/ocr_v1.cact" ]; then
   verify_sha "$MODEL_DIR/ocr_v1.cact.tmp" "$MODEL_SHA"
   mv "$MODEL_DIR/ocr_v1.cact.tmp" "$MODEL_DIR/ocr_v1.cact"
   echo "Installed $MODEL_DIR/ocr_v1.cact"
+fi
+
+if [ ! -f "$TESS_DIR/eng.traineddata" ]; then
+  curl -fL "$TESS_BASE/eng.traineddata" -o "$TESS_DIR/eng.traineddata.tmp"
+  verify_sha "$TESS_DIR/eng.traineddata.tmp" "$ENG_SHA"
+  mv "$TESS_DIR/eng.traineddata.tmp" "$TESS_DIR/eng.traineddata"
+  echo "Installed $TESS_DIR/eng.traineddata"
+fi
+
+if [ ! -f "$TESS_DIR/hin.traineddata" ]; then
+  curl -fL "$TESS_BASE/hin.traineddata" -o "$TESS_DIR/hin.traineddata.tmp"
+  verify_sha "$TESS_DIR/hin.traineddata.tmp" "$HIN_SHA"
+  mv "$TESS_DIR/hin.traineddata.tmp" "$TESS_DIR/hin.traineddata"
+  echo "Installed $TESS_DIR/hin.traineddata"
 fi
 
 echo "Assets ready."

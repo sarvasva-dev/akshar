@@ -145,7 +145,11 @@ fn test_ocr_tiled_pdf_and_auto_fallback() {
     let r_inv = engine
         .smart_process_bytes(&inv_png, Some("inv.png"), &SmartOptions::default())
         .expect("smart ocr");
-    assert_eq!(r_inv["meta"]["auto_route"], "standard_ocr");
+    let route = r_inv["meta"]["auto_route"].as_str().unwrap();
+    assert!(
+        route == "standard_ocr" || route == "fast_document_ocr",
+        "expected standard or fast ocr route, got: {route}"
+    );
     let txt = r_inv["text"].as_str().unwrap().to_uppercase();
     assert!(txt.contains("48291"), "got: {txt}");
     assert!(txt.contains("1250"), "got: {txt}");

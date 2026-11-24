@@ -35,3 +35,8 @@ ureq = { version = "2", default-features = false, features = ["tls"] }
 [dev-dependencies]
 http-body-util = "0.1"
 tower = { version = "0.5", features = ["util"] }
+
+[profile.release]
+strip = true
+lto = "thin"
+codegen-units = 1
