@@ -12,8 +12,8 @@
   <a href="https://github.com/sarvasva-dev/akshar/actions/workflows/ci.yml">
     <img src="https://github.com/sarvasva-dev/akshar/actions/workflows/ci.yml/badge.svg" alt="CI" />
   </a>
-  <a href="LICENSE">
-    <img src="https://img.shields.io/badge/license-Apache%202.0-blue.svg" alt="License" />
+  <a href="LICENSE-APACHE">
+    <img src="https://img.shields.io/badge/license-MIT%20%2F%20Apache--2.0-blue.svg" alt="License: MIT / Apache-2.0" />
   </a>
   <img src="https://img.shields.io/badge/rust-edition%202024-orange.svg" alt="Rust" />
 </p>
@@ -144,4 +144,9 @@ cargo test --release -- --test-threads=1
 
 ## License & Attribution
 
-Licensed under the [Apache License 2.0](LICENSE). See [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) for third-party model and runtime attributions.
+Dual-licensed under either of:
+
+- [MIT License](LICENSE-MIT)
+- [Apache License, Version 2.0](LICENSE-APACHE)
+
+at your option. See [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) for third-party model and runtime attributions.
